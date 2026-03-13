@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>暗黑傳說：神裝覺醒</title>
+    <style>
+        :root { --bg: #0d0d0d; --panel: #1a1a1a; --accent: #f1c40f; --danger: #e74c3c; --success: #2ecc71; 
+                --rare: #3498db; --epic: #9b59b6; --legend: #e67e22; }
+        body { background: var(--bg); color: #ccc; font-family: -apple-system, sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        .panel { background: var(--panel); padding: 8px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #333; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px; }
+        
+        /* 裝備顯示 */
+        .wpn-display { color: var(--accent); font-weight: bold; font-size: 13px; text-align: center; margin-top: 5px; padding: 5px; border: 1px dashed #444; border-radius: 5px; }
+
+        .battle-stage { position: relative; background: radial-gradient(circle, #222 0%, #000 80%); height: 140px; border-radius: 10px; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 15px; border: 1px solid #444; }
+        .hp-mini { background: #444; height: 4px; width: 50px; border-radius: 2px; margin: 5px auto; overflow: hidden; }
+        .hp-fill { background: var(--danger); height: 100%; transition: width 0.2s; }
+
+        .tab-bar { display: flex; gap: 4px; margin: 5px 0; }
+        .tab-btn { flex: 1; padding: 8px; font-size: 11px; background: #222; color: #fff; border: 1px solid #444; border-radius: 5px; }
+        .active-tab { background: #444; border-color: var(--accent); }
+
+        .scroll-box { flex-grow: 1; background: #000; border-radius: 10px; padding: 10px; overflow-y: auto; font-size: 13px; border: 1px solid #222; }
+        .skill-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 5px 0; }
+        .btn-skill { background: #e67e22; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; }
+        .btn-skill:disabled { background: #444; opacity: 0.5; }
+        .shop-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #222; }
+        .reborn-ui { background: linear-gradient(45deg, #8e44ad, #2980b9); color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: bold; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <div class="grid">
+            <div style="color:var(--accent)">Lv.<span id="lvl">1</span> (<span id="rb-cnt">0</span> 轉)</div>
+            <div style="text-align:right">地圖: <span id="map-name">森林</span></div>
+            <div>攻擊力: <span id="total-atk" style="color:var(--success)">0</span></div>
+            <div>生命: <span id="p-hp" style="color:var(--danger)">100</span>/<span id="p-max-hp">100</span></div>
+            <div>暴擊: <span id="p-crit">5</span>%</div>
+            <div>吸血: <span id="p-ls">0</span>%</div>
+            <div>金幣: $<span id="gold">0</span></div>
+            <div>靈魂點: <span id="soul-pts" style="color:#9b59b6">0</span></div>
+        </div>
+        <div id="wpn-name" class="wpn-display">目前裝備：新手木棍</div>
+    </div>
+
+    <div class="battle-stage" onclick="manualHit()">
+        <div id="monster-container" style="display:flex; align-items:flex-end; gap:10px;"></div>
+    </div>
+
+    <div class="skill-group">
+        <button id="sk-slash" class="btn-skill" onclick="useSkill('slash')">烈焰斬 (CD:<span id="cd-1">0</span>)</button>
+        <button id="sk-heal" class="btn-skill" style="background:#27ae60" onclick="useSkill('heal')">聖癒 (CD:<span id="cd-2">0</span>)</button>
+    </div>
+
+    <div class="tab-bar">
+        <button id="tab-log" class="tab-btn active-tab" onclick="setTab('log')">日誌</button>
+        <button id="tab-shop" class="tab-btn" onclick="setTab('shop')">商店/地圖</button>
+        <button id="tab-talent" class="tab-btn" onclick="setTab('talent')">天賦樹</button>
+    </div>
+
+    <div id="display-box" class="scroll-box"></div>
+    <button id="reborn-btn" class="reborn-ui" style="display:none;" onclick="doReborn()">等級100轉生</button>
+
+    <script>
+        let p = JSON.parse(localStorage.getItem('dark_rpg_v7')) || {
+            lvl: 1, exp: 0, gold: 0, reborn: 0, soulPoints: 0, hp: 100, maxHp: 100,
+            talents: { drop: 0, cd: 0, atk: 0 },
+            baseAtk: 10, buyAtk: 0, mapIdx: 0, 
+            weapon: { n: "新手木棍", atk: 2, crit: 0, ls: 0, color: "#ccc" }
+        };
+
+        let monsters = [];
+        let cd = { slash: 0, heal: 0 };
+        let currentTab = 'log';
+
+        // --- 繪圖邏輯 ---
+        function getMonsterSVG() {
+            let color = p.mapIdx === 0 ? "#2ecc71" : "#c0392b";
+            return `<svg width="50" height="50" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="${color}" stroke="#000" stroke-width="2"/>
+                <circle cx="35" cy="40" r="5" fill="white"/><circle cx="65" cy="40" r="5" fill="white"/>
+                <rect x="30" y="65" width="40" height="4" fill="black"/>
+            </svg>`;
+        }
+
+        // --- 核心戰鬥 ---
+        function calculateAtk() {
+            let base = p.baseAtk + p.buyAtk + p.weapon.atk;
+            let mult = Math.pow(1.5, p.reborn) * (1 + (p.talents.atk * 0.1));
+            return Math.floor(base * mult);
+        }
+
+        function deal(mult) {
+            if(monsters.length === 0) return;
+            let finalAtk = calculateAtk();
+            // 暴擊判定
+            if(Math.random() * 100 < (5 + p.weapon.crit)) finalAtk *= 2;
+            
+            monsters[0].hp -= finalAtk * mult;
+            
+            // 吸血判定
+            if(p.weapon.ls > 0) p.hp = Math.min(p.maxHp, p.hp + (finalAtk * mult * p.weapon.ls / 100));
+
+            if(monsters[0].hp <= 0) {
+                p.gold += (20 + (p.lvl * 2)) * (1 + p.talents.drop * 0.2);
+                p.exp += 30;
+                checkDrop(); // 檢查掉寶
+                checkLevel();
+                monsters.shift();
+                if(monsters.length === 0) setTimeout(spawn, 400);
+            }
+            updateUI();
+        }
+
+        // --- 掉寶系統 ---
+        function checkDrop() {
+            let dropRate = 0.1 + (p.mapIdx * 0.1); // 深淵掉率更高
+            if(Math.random() < dropRate) {
+                let r = Math.random();
+                let item = { n: "長劍", atk: p.lvl * 2, crit: 0, ls: 0, color: "#fff" };
+                
+                if(r > 0.95) { item.n = "【傳說】弒神者"; item.atk *= 5; item.crit = 20; item.ls = 10; item.color = "var(--legend)"; }
+                else if(r > 0.8) { item.n = "【史詩】龍牙刃"; item.atk *= 3; item.crit = 10; item.color = "var(--epic)"; }
+                else if(r > 0.5) { item.n = "【稀有】精鋼劍"; item.atk *= 2; item.color = "var(--rare)"; }
+
+                // 自動換裝：簡單比對攻擊力
+                if(item.atk > p.weapon.atk) {
+                    p.weapon = item;
+                    addLog(`<span style="color:${item.color}">掉落並裝備了 ${item.n}！</span>`);
+                }
+            }
+        }
+
+        function spawn() {
+            monsters = [];
+            let count = Math.floor(Math.random() * (p.mapIdx + 2)) + 1;
+            for(let i=0; i<count; i++) {
+                let mHp = (50 + (p.lvl * 30)) * (p.mapIdx + 1);
+                monsters.push({ hp: mHp, maxHp: mHp });
+            }
+            updateUI();
+        }
+
+        function checkLevel() { if(p.exp >= p.lvl * 100) { p.lvl++; addLog(`等級提升至 ${p.lvl}`); save(); } }
+        function save() { localStorage.setItem('dark_rpg_v7', JSON.stringify(p)); }
+        function manualHit() { deal(1.5); }
+        function setTab(t) { currentTab = t; updateUI(); }
+        function changeMap(idx) { p.mapIdx = idx; spawn(); }
+        function useSkill(t) {
+            if(cd[t] > 0) return;
+            if(t==='slash'){ deal(5); cd.slash = Math.max(2, 10-p.talents.cd); }
+            if(t==='heal'){ p.hp=Math.min(p.maxHp, p.hp+(p.maxHp*0.3)); cd.heal=Math.max(5, 15-p.talents.cd); }
+            updateUI();
+        }
+
+        function doReborn() {
+            if(p.lvl < 100) return;
+            p.reborn++; p.soulPoints++; p.lvl=1; p.exp=0; p.gold=0; p.buyAtk=0; p.hp=100;
+            p.weapon = { n: "新手木棍", atk: 2, crit: 0, ls: 0, color: "#ccc" };
+            save(); spawn();
+        }
+
+        function addLog(m) {
+            if(currentTab!=='log') return;
+            const b = document.getElementById('display-box');
+            b.innerHTML += `<div>${m}</div>`; b.scrollTop = b.scrollHeight;
+        }
+
+        function updateUI() {
+            document.getElementById('lvl').innerText = p.lvl;
+            document.getElementById('rb-cnt').innerText = p.reborn;
+            document.getElementById('total-atk').innerText = calculateAtk();
+            document.getElementById('p-hp').innerText = Math.floor(p.hp);
+            document.getElementById('p-max-hp').innerText = p.maxHp;
+            document.getElementById('gold').innerText = Math.floor(p.gold);
+            document.getElementById('soul-pts').innerText = p.soulPoints;
+            document.getElementById('p-crit').innerText = 5 + p.weapon.crit;
+            document.getElementById('p-ls').innerText = p.weapon.ls;
+            document.getElementById('map-name').innerText = p.mapIdx === 0 ? "森林" : "深淵";
+            
+            const wDisplay = document.getElementById('wpn-name');
+            wDisplay.innerText = `目前裝備：${p.weapon.n} (ATK+${p.weapon.atk})`;
+            wDisplay.style.color = p.weapon.color;
+
+            document.getElementById('cd-1').innerText = cd.slash;
+            document.getElementById('cd-2').innerText = cd.heal;
+            document.getElementById('sk-slash').disabled = cd.slash > 0;
+            document.getElementById('sk-heal').disabled = cd.heal > 0;
+            document.getElementById('reborn-btn').style.display = p.lvl >= 100 ? 'block' : 'none';
+
+            document.getElementById('monster-container').innerHTML = monsters.map(m => `
+                <div class="unit">${getMonsterSVG()}<div class="hp-mini"><div class="hp-fill" style="width:${(m.hp/m.maxHp)*100}%"></div></div></div>
+            `).join('');
+
+            const box = document.getElementById('display-box');
+            if(currentTab === 'shop') {
+                box.innerHTML = `
+                    <div class="shop-item"><span>前往森林</span><button onclick="changeMap(0)">前往</button></div>
+                    <div class="shop-item"><span>前往深淵</span><button onclick="changeMap(1)">前往</button></div>
+                    <div class="shop-item"><span>購買攻擊 (+5)</span><button onclick="buyAtk()">$${(p.buyAtk/5+1)*100}</button></div>
+                `;
+            } else if(currentTab === 'talent') {
+                box.innerHTML = `
+                    <div class="shop-item"><span>💰 貪婪 (金幣+20%) [Lv.${p.talents.drop}]</span><button onclick="upgradeTalent('drop')">升級</button></div>
+                    <div class="shop-item"><span>⚡ 迅捷 (技能CD-1s) [Lv.${p.talents.cd}]</span><button onclick="upgradeTalent('cd')">升級</button></div>
+                    <div class="shop-item"><span>⚔️ 狂暴 (總傷害+10%) [Lv.${p.talents.atk}]</span><button onclick="upgradeTalent('atk')">升級</button></div>
+                `;
+            }
+        }
+
+        function buyAtk() {
+            let cost = (p.buyAtk/5+1)*100;
+            if(p.gold >= cost) { p.gold -= cost; p.buyAtk += 5; save(); updateUI(); }
+        }
+
+        function upgradeTalent(k) { if(p.soulPoints>0){ p.soulPoints--; p.talents[k]++; save(); updateUI(); } }
+
+        setInterval(() => {
+            if(cd.slash > 0) cd.slash--; if(cd.heal > 0) cd.heal--;
+            deal(1);
+            if(monsters.length > 0) {
+                p.hp -= (5 + p.lvl) * (p.mapIdx + 1) / 10;
+                if(p.hp <= 0) { p.hp = p.maxHp; changeMap(0); }
+            }
+            updateUI();
+        }, 1000);
+
+        spawn();
+    </script>
+</body>
+</html>
