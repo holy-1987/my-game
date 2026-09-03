@@ -1,0 +1,304 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Backpack, CircleDollarSign, Heart, Mountain, Play, Shield, Sparkles, Sword, Trophy, Wind } from "lucide-react";
+
+type Screen = "home" | "gear" | "game";
+type GearSlot = "weapon" | "robe" | "ring";
+type Quality = "精良" | "稀有" | "史詩" | "傳說";
+type SkillKey = "sword" | "lightning" | "flame" | "might" | "wind" | "vitality";
+type GearEffectKey = "thunderEdge" | "swordStorm" | "flameEcho" | "guardian" | "spiritBarrier" | "spiritSiphon" | "windStep";
+type Gear = { id: string; name: string; slot: GearSlot; quality: Quality; attack: number; hp: number; effect?: GearEffectKey | null };
+type SaveData = { spiritStones: number; bestTime: number; totalKills: number; attackRank: number; inventory: Gear[]; equipped: Partial<Record<GearSlot, string>> };
+type RunResult = { time: number; kills: number; stones: number; drops: Gear[]; victory: boolean };
+
+const STORAGE_KEY = "dujie-walker-save-v1";
+const defaultSave: SaveData = { spiritStones: 0, bestTime: 0, totalKills: 0, attackRank: 0, inventory: [], equipped: {} };
+const qualities: Record<Quality, { color: string; scale: number }> = {
+  精良: { color: "#58d59a", scale: 1 }, 稀有: { color: "#55a8ff", scale: 1.35 }, 史詩: { color: "#b978ff", scale: 1.8 }, 傳說: { color: "#ffb83e", scale: 2.5 },
+};
+const skillInfo: Record<SkillKey, { name: string; description: string; icon: string; color: string }> = {
+  sword: { name: "御劍術", description: "飛劍環繞，自動斬擊近身敵人", icon: "劍", color: "#77e5ff" },
+  lightning: { name: "天雷訣", description: "定期召喚連鎖雷擊", icon: "雷", color: "#b88cff" },
+  flame: { name: "炎爆訣", description: "發射會爆裂的火焰", icon: "炎", color: "#ff8c62" },
+  might: { name: "破軍心法", description: "所有傷害提高 18%", icon: "破", color: "#ffd16a" },
+  wind: { name: "凌風步", description: "移動與攻擊速度提高", icon: "風", color: "#67e7bc" },
+  vitality: { name: "玄元護體", description: "提升生命上限並立即療癒", icon: "護", color: "#ff7fa5" },
+};
+const skillEvolutionNames: Record<SkillKey, [string, string, string, string]> = {
+  sword: ["御劍術", "飛劍流光", "萬劍天河", "萬劍歸宗"], lightning: ["天雷訣", "紫霄雷法", "九霄雷劫", "混沌神雷"], flame: ["炎爆訣", "赤焰真訣", "焚天火海", "三昧真火"], might: ["破軍心法", "戰意沸騰", "霸體破軍", "無雙戰魂"], wind: ["凌風步", "踏雲身法", "瞬影天行", "咫尺天涯"], vitality: ["玄元護體", "金剛靈身", "不滅道軀", "萬法不侵"],
+};
+const skillTier = (level: number) => level >= 7 ? "天階" : level >= 5 ? "玄階" : level >= 3 ? "靈階" : "凡階";
+const skillStage = (level: number) => level >= 7 ? 3 : level >= 5 ? 2 : level >= 3 ? 1 : 0;
+const skillDisplayName = (key: SkillKey, level: number) => skillEvolutionNames[key][skillStage(level)];
+const gearNames: Record<GearSlot, string[]> = {
+  weapon: ["青鋒劍", "玄雷劍", "赤霄古劍", "太虛劍"], robe: ["流雲法袍", "玄武道衣", "星辰仙衣", "無相天衣"], ring: ["聚靈戒", "雷紋戒", "焚天戒", "乾坤指環"],
+};
+const gearEffectInfo: Record<GearEffectKey, { name: string; description: string }> = {
+  thunderEdge: { name: "雷霆劍心", description: "暴擊率 +8%，暴擊會牽引一道天雷" },
+  swordStorm: { name: "萬劍共鳴", description: "飛劍斬擊範圍與傷害提高 25%" },
+  flameEcho: { name: "炎脈回響", description: "飛劍命中時有機率引發小型炎爆" },
+  guardian: { name: "不滅生息", description: "每擊敗 20 隻妖物，回復 6% 氣血" },
+  spiritBarrier: { name: "玄甲靈障", description: "受到的傷害降低 15%" },
+  spiritSiphon: { name: "聚靈虹吸", description: "修為珠吸取範圍提高 55%" },
+  windStep: { name: "踏風無痕", description: "移動速度 +12%，閃身冷卻縮短" },
+};
+const gearEffectPools: Record<GearSlot, GearEffectKey[]> = { weapon: ["thunderEdge", "swordStorm", "flameEcho"], robe: ["guardian", "spiritBarrier"], ring: ["spiritSiphon", "windStep"] };
+
+function makeGear(power: number, forceQuality?: Quality): Gear {
+  const roll = Math.random();
+  const quality = forceQuality ?? (roll > .97 ? "傳說" : roll > .82 ? "史詩" : roll > .48 ? "稀有" : "精良");
+  const slot = (["weapon", "robe", "ring"] as GearSlot[])[Math.floor(Math.random() * 3)];
+  const scale = qualities[quality].scale, effectChance = quality === "傳說" ? 1 : quality === "史詩" ? .88 : quality === "稀有" ? .58 : .3, pool = gearEffectPools[slot], effect = Math.random() < effectChance ? pool[Math.floor(Math.random() * pool.length)] : undefined;
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: gearNames[slot][Math.floor(Math.random() * gearNames[slot].length)], slot, quality, attack: Math.max(1, Math.round((slot === "weapon" ? 8 : 3) * scale + power * .45)), hp: Math.round((slot === "robe" ? 30 : 8) * scale + power * 1.1), effect: effect ?? null };
+}
+function formatTime(seconds: number) { return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`; }
+
+function useSave() {
+  const [save, setSave] = useState<SaveData>(defaultSave); const [loaded, setLoaded] = useState(false);
+  useEffect(() => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw) as SaveData, inventory = (parsed.inventory ?? []).map((gear) => { if (Object.prototype.hasOwnProperty.call(gear, "effect")) return gear; const pool = gearEffectPools[gear.slot], hash = [...gear.id].reduce((sum, char) => sum + char.charCodeAt(0), 0); return { ...gear, effect: pool[hash % pool.length] }; }); setSave({ ...defaultSave, ...parsed, inventory }); } } catch {} setLoaded(true); }, []);
+  useEffect(() => { if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(save)); }, [save, loaded]);
+  return [save, setSave] as const;
+}
+
+export default function Home() {
+  const [screen, setScreen] = useState<Screen>("home"); const [save, setSave] = useSave(); const [lastResult, setLastResult] = useState<RunResult | null>(null);
+  const gearStats = useMemo(() => {
+    const equipped = Object.values(save.equipped).map((id) => save.inventory.find((g) => g.id === id)).filter(Boolean) as Gear[];
+    return { attack: equipped.reduce((sum, item) => sum + item.attack, 0) + save.attackRank * 3, hp: equipped.reduce((sum, item) => sum + item.hp, 0), effects: equipped.flatMap((item) => item.effect ? [item.effect] : []) };
+  }, [save]);
+  const finishRun = useCallback((result: RunResult) => {
+    setSave((old) => ({ ...old, spiritStones: old.spiritStones + result.stones, bestTime: Math.max(old.bestTime, result.time), totalKills: old.totalKills + result.kills, inventory: [...old.inventory, ...result.drops].slice(-60) }));
+    setLastResult(result); setScreen("home");
+  }, [setSave]);
+  const upgradeCost = 40 + save.attackRank * 35;
+  const buyAttack = () => { if (save.spiritStones >= upgradeCost) setSave((old) => ({ ...old, spiritStones: old.spiritStones - upgradeCost, attackRank: old.attackRank + 1 })); };
+  if (screen === "game") return <Game gearAttack={gearStats.attack} gearHp={gearStats.hp} gearEffects={gearStats.effects} onFinish={finishRun} />;
+
+  return <main className="app-shell">
+    <div className="ambient ambient-a" /><div className="ambient ambient-b" />
+    <header className="topbar">
+      <button className="brand" onClick={() => setScreen("home")} aria-label="返回洞府"><span className="brand-mark">渡</span><span><b>渡劫行者</b><small>凡人界 · 青雲山脈</small></span></button>
+      <div className="currency"><CircleDollarSign size={17} /><span>{save.spiritStones}</span><small>靈石</small></div>
+    </header>
+    {screen === "home" ? <section className="home-grid">
+      <div className="hero-panel">
+        <div className="realm-orbit" aria-hidden="true"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><div className="cultivator"><span>仙</span></div></div>
+        <p className="eyebrow"><Mountain size={16} /> 當前境界</p><h1>練氣 {Math.min(9, 1 + Math.floor(save.attackRank / 2))} 層</h1>
+        <p className="hero-copy">進入青雲山脈，在妖潮中淬鍊飛劍與術法。每次歷練都能帶回靈石與裝備。</p>
+        <button className="primary-button" onClick={() => { setLastResult(null); setScreen("game"); }}><Play size={20} fill="currentColor" /> 開始歷練</button>
+        <div className="mini-stats"><span><Trophy size={15} /> 最佳 {formatTime(save.bestTime)}</span><span><Sword size={15} /> 傷害 +{gearStats.attack}</span><span><Heart size={15} /> 生命 +{gearStats.hp}</span></div>
+      </div>
+      <aside className="side-stack">
+        {lastResult && <article className="result-card"><div><Sparkles size={18} /><b>{lastResult.victory ? "成功渡過妖潮" : "本次歷練結束"}</b></div><p>{formatTime(lastResult.time)} · 擊敗 {lastResult.kills} · 靈石 +{lastResult.stones}</p>{lastResult.drops.length > 0 && <small>獲得 {lastResult.drops.length} 件新裝備</small>}</article>}
+        <button className="feature-card" onClick={() => setScreen("gear")}><span className="feature-icon"><Backpack size={23} /></span><span><b>裝備庫</b><small>{save.inventory.length} 件裝備 · 3 個部位</small></span><span className="chevron">›</span></button>
+        <article className="cultivation-card"><div className="card-title"><span className="feature-icon gold"><Sword size={22} /></span><span><b>破軍心法</b><small>永久提高基礎傷害</small></span></div><div className="rank-row"><span>心法等級 {save.attackRank}</span><strong>+{save.attackRank * 3} 傷害</strong></div><button className="upgrade-button" onClick={buyAttack} disabled={save.spiritStones < upgradeCost}>提升心法 <span>{upgradeCost} 靈石</span></button></article>
+        <article className="records-card"><div><span>累計擊敗</span><b>{save.totalKills.toLocaleString()}</b></div><div><span>裝備加成</span><b>+{gearStats.attack} 攻 / +{gearStats.hp} 血</b></div></article>
+      </aside>
+    </section> : <GearScreen save={save} setSave={setSave} onBack={() => setScreen("home")} />}
+  </main>;
+}
+
+function GearScreen({ save, setSave, onBack }: { save: SaveData; setSave: React.Dispatch<React.SetStateAction<SaveData>>; onBack: () => void }) {
+  const slotLabels: Record<GearSlot, string> = { weapon: "武器", robe: "法袍", ring: "戒指" };
+  const [notice, setNotice] = useState("");
+  const equip = (gear: Gear) => setSave((old) => ({ ...old, equipped: { ...old.equipped, [gear.slot]: gear.id } }));
+  const gearValue = (gear: Gear) => Math.max(5, Math.round((gear.attack + gear.hp / 4) * qualities[gear.quality].scale));
+  const sell = (gear: Gear) => { const value = gearValue(gear); setSave((old) => ({ ...old, spiritStones: old.spiritStones + value, inventory: old.inventory.filter((g) => g.id !== gear.id), equipped: old.equipped[gear.slot] === gear.id ? { ...old.equipped, [gear.slot]: undefined } : old.equipped })); };
+  const batchSell = (predicate: (gear: Gear) => boolean, label: string) => { const equipped = new Set(Object.values(save.equipped)), targets = save.inventory.filter((gear) => !equipped.has(gear.id) && predicate(gear)); if (!targets.length) return; if (!window.confirm(`確定分解 ${targets.length} 件${label}裝備？已裝備的道具會保留。`)) return; const ids = new Set(targets.map((gear) => gear.id)), value = targets.reduce((sum, gear) => sum + gearValue(gear), 0); setSave((old) => ({ ...old, spiritStones: old.spiritStones + value, inventory: old.inventory.filter((gear) => !ids.has(gear.id)) })); setNotice(`已分解 ${targets.length} 件，獲得 ${value} 靈石`); window.setTimeout(() => setNotice(""), 2600); };
+  const unequippedCount = (predicate: (gear: Gear) => boolean) => { const equipped = new Set(Object.values(save.equipped)); return save.inventory.filter((gear) => !equipped.has(gear.id) && predicate(gear)).length; };
+  return <section className="gear-page">
+    <div className="section-heading"><button className="icon-button" onClick={onBack}><ArrowLeft size={21} /></button><div><p className="eyebrow">洞府 · 儲物戒</p><h1>裝備庫</h1></div></div>
+    <div className="equipped-row">{(["weapon", "robe", "ring"] as GearSlot[]).map((slot) => { const item = save.inventory.find((g) => g.id === save.equipped[slot]); return <div className={`equip-slot ${item ? "filled" : ""}`} key={slot} style={item ? { "--quality": qualities[item.quality].color } as React.CSSProperties : undefined}><span>{slot === "weapon" ? <Sword /> : slot === "robe" ? <Shield /> : <Sparkles />}</span><small>{slotLabels[slot]}</small><b>{item?.name ?? "尚未裝備"}</b></div>; })}</div>
+    {save.inventory.length > 0 && <div className="batch-panel"><div><b>批次分解</b><small>依階級或種類分解，已裝備的道具會自動保留</small></div><div className="batch-groups"><div><span>階級</span>{(["精良", "稀有", "史詩", "傳說"] as Quality[]).map((quality) => { const count = unequippedCount((gear) => gear.quality === quality); return <button key={quality} disabled={!count} style={{ "--quality": qualities[quality].color } as React.CSSProperties} onClick={() => batchSell((gear) => gear.quality === quality, quality)}>{quality}<i>{count}</i></button>; })}</div><div><span>種類</span>{(["weapon", "robe", "ring"] as GearSlot[]).map((slot) => { const count = unequippedCount((gear) => gear.slot === slot); return <button key={slot} disabled={!count} onClick={() => batchSell((gear) => gear.slot === slot, slotLabels[slot])}>{slotLabels[slot]}<i>{count}</i></button>; })}</div></div>{notice && <p className="batch-notice">{notice}</p>}</div>}
+    {save.inventory.length === 0 ? <div className="empty-state"><Backpack size={42} /><h2>儲物戒還是空的</h2><p>擊敗精英與首領，就有機會獲得裝備。</p><button className="secondary-button" onClick={onBack}>返回洞府</button></div> : <div className="inventory-grid">{[...save.inventory].reverse().map((gear) => { const active = save.equipped[gear.slot] === gear.id, effect = gear.effect ? gearEffectInfo[gear.effect] : null; return <article className={`gear-card ${active ? "active" : ""}`} key={gear.id} style={{ "--quality": qualities[gear.quality].color } as React.CSSProperties}><div className="gear-top"><span className="quality-dot" /><small>{gear.quality} · {slotLabels[gear.slot]}</small>{active && <em>裝備中</em>}</div><h3>{gear.name}</h3><div className="gear-stats"><span>攻擊 +{gear.attack}</span><span>生命 +{gear.hp}</span></div>{effect ? <div className="gear-effect"><Sparkles size={15} /><div><b>{effect.name}</b><small>{effect.description}</small></div></div> : <div className="gear-effect dormant"><span>—</span><small>此裝備沒有特殊效果</small></div>}<div className="gear-actions"><button onClick={() => equip(gear)} disabled={active}>{active ? "已裝備" : "裝備"}</button><button className="sell" onClick={() => sell(gear)}>分解</button></div></article>; })}</div>}
+  </section>;
+}
+
+type Enemy = { id: number; x: number; y: number; hp: number; maxHp: number; speed: number; r: number; type: "mob" | "elite" | "boss"; variant: 0 | 1 | 2; hit: number; hurt: number };
+type Projectile = { x: number; y: number; vx: number; vy: number; r: number; damage: number; life: number; kind: "bolt" | "fire"; pierce: number };
+type PickupKind = "healing" | "thunder" | "magnet" | "fury";
+type Pickup = { id: number; x: number; y: number; kind: PickupKind; life: number };
+type Orb = { x: number; y: number; value: number }; type Burst = { x: number; y: number; r: number; life: number; color: string; kind?: "ring" | "lightning" | "fire" | "sword" | "hit" | "heal" | "spirit" | "pickup" }; type FloatText = { x: number; y: number; value: string; life: number; color: string };
+type Particle = { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; size: number; color: string };
+type GameState = { width: number; height: number; player: { x: number; y: number; hp: number; maxHp: number; level: number; xp: number; need: number; speed: number; damage: number; invuln: number; facing: number }; enemies: Enemy[]; projectiles: Projectile[]; orbs: Orb[]; pickups: Pickup[]; bursts: Burst[]; particles: Particle[]; texts: FloatText[]; time: number; kills: number; stones: number; drops: Gear[]; skills: Record<SkillKey, number>; spawnTimer: number; pickupTimer: number; shotTimer: number; lightningTimer: number; fireTimer: number; swordTimer: number; nextElite: number; nextBoss: number; combo: number; comboTimer: number; furyTimer: number; shake: number; flash: number; flashColor: string; id: number };
+
+function drawEnemyFigure(ctx: CanvasRenderingContext2D, enemy: Enemy, time: number) {
+  const bob = Math.sin(time * 4 + enemy.id) * (enemy.variant === 1 ? 3 : 1.2), r = enemy.r;
+  ctx.save(); ctx.translate(enemy.x, enemy.y + bob); if (enemy.hurt > 0) ctx.filter = "brightness(2.25) saturate(.45)";
+  ctx.globalAlpha = .35; ctx.fillStyle = "#000"; ctx.beginPath(); ctx.ellipse(0, r * .72, r * .9, r * .32, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  if (enemy.type !== "mob") { const pulse = 1 + Math.sin(time * 5 + enemy.id) * .08; ctx.strokeStyle = enemy.type === "boss" ? "rgba(255,73,111,.62)" : "rgba(190,122,255,.56)"; ctx.lineWidth = enemy.type === "boss" ? 4 : 2; ctx.shadowBlur = 20; ctx.shadowColor = enemy.type === "boss" ? "#ff315e" : "#a65cff"; ctx.beginPath(); ctx.arc(0, 0, r * 1.35 * pulse, 0, Math.PI * 2); ctx.stroke(); ctx.shadowBlur = 0; }
+  if (enemy.type === "boss") {
+    ctx.strokeStyle = "rgba(255,83,132,.48)"; ctx.lineWidth = r * .22; ctx.lineCap = "round"; for (let i = -2; i <= 2; i++) { const sway = Math.sin(time * 2.5 + i) * r * .18; ctx.beginPath(); ctx.moveTo(i * r * .18, r * .45); ctx.quadraticCurveTo(i * r * .58 + sway, r * 1.15, i * r * .86 + sway, r * 1.42); ctx.stroke(); } ctx.lineCap = "butt";
+    ctx.fillStyle = "#50142d"; ctx.beginPath(); ctx.moveTo(-r * .74, -r * .46); ctx.lineTo(-r * 1.22, -r * 1.06); ctx.lineTo(-r * .25, -r * .72); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(r * .74, -r * .46); ctx.lineTo(r * 1.22, -r * 1.06); ctx.lineTo(r * .25, -r * .72); ctx.closePath(); ctx.fill();
+    const body = ctx.createRadialGradient(-r * .2, -r * .3, 2, 0, 0, r); body.addColorStop(0, "#dc5472"); body.addColorStop(.45, "#962e50"); body.addColorStop(1, "#45152b"); ctx.fillStyle = body; ctx.shadowBlur = 18; ctx.shadowColor = "#ff315e"; ctx.beginPath(); ctx.ellipse(0, 2, r * .86, r, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = "#f5c6a2"; ctx.beginPath(); ctx.moveTo(-r * .58, -r * .6); ctx.lineTo(-r * .22, -r * .94); ctx.lineTo(-r * .08, -r * .61); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(r * .58, -r * .6); ctx.lineTo(r * .22, -r * .94); ctx.lineTo(r * .08, -r * .61); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fff3d1"; ctx.shadowBlur = 10; ctx.shadowColor = "#ffcf6a"; ctx.beginPath(); ctx.ellipse(-r * .28, -r * .18, r * .13, r * .09, -.2, 0, Math.PI * 2); ctx.ellipse(r * .28, -r * .18, r * .13, r * .09, .2, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#2d0a1a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, r * .16, r * .32, .2, Math.PI - .2); ctx.stroke();
+  } else if (enemy.variant === 0) {
+    ctx.strokeStyle = enemy.type === "elite" ? "#9e61c4" : "#348e70"; ctx.lineWidth = r * .28; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-r * .72, r * .2); ctx.quadraticCurveTo(-r * 1.32, r * .35, -r * 1.16, -.25 * r); ctx.stroke(); ctx.lineCap = "butt";
+    const hide = enemy.type === "elite" ? "#63388a" : "#26715d"; ctx.fillStyle = hide; ctx.shadowBlur = 12; ctx.shadowColor = enemy.type === "elite" ? "#b366ff" : "#49d6a7"; ctx.beginPath(); ctx.ellipse(0, 3, r, r * .78, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = enemy.type === "elite" ? "#9d66c4" : "#45a983"; ctx.beginPath(); ctx.moveTo(-r * .7, -r * .35); ctx.lineTo(-r * .47, -r * 1.02); ctx.lineTo(-r * .12, -r * .5); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(r * .7, -r * .35); ctx.lineTo(r * .47, -r * 1.02); ctx.lineTo(r * .12, -r * .5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#11342c"; ctx.beginPath(); ctx.ellipse(0, r * .2, r * .48, r * .32, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#b9ffe7"; ctx.beginPath(); ctx.arc(-r * .31, -r * .13, r * .11, 0, Math.PI * 2); ctx.arc(r * .31, -r * .13, r * .11, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#031b17"; ctx.beginPath(); ctx.arc(0, r * .17, r * .12, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = enemy.type === "elite" ? "#cf9aff" : "#5bd3a7"; ctx.beginPath(); ctx.arc(-r * .55, r * .58, r * .18, 0, Math.PI * 2); ctx.arc(r * .55, r * .58, r * .18, 0, Math.PI * 2); ctx.fill();
+  } else if (enemy.variant === 1) {
+    ctx.globalAlpha = .26; ctx.strokeStyle = enemy.type === "elite" ? "#c078ff" : "#78e7d7"; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const a = time * (1.2 + i * .2) + enemy.id + i * 2.1; ctx.beginPath(); ctx.arc(Math.cos(a) * r * 1.15, Math.sin(a) * r * .75, r * (.18 + i * .04), 0, Math.PI * 2); ctx.stroke(); } ctx.globalAlpha = 1;
+    ctx.fillStyle = enemy.type === "elite" ? "rgba(164,98,219,.9)" : "rgba(84,155,158,.88)"; ctx.shadowBlur = 15; ctx.shadowColor = enemy.type === "elite" ? "#c66cff" : "#77e5db"; ctx.beginPath(); ctx.moveTo(-r * .8, r * .8); ctx.quadraticCurveTo(-r * 1.02, 0, -r * .58, -r * .62); ctx.quadraticCurveTo(0, -r * 1.12, r * .58, -r * .62); ctx.quadraticCurveTo(r * 1.02, 0, r * .8, r * .8); ctx.lineTo(r * .4, r * .48); ctx.lineTo(0, r * .9); ctx.lineTo(-r * .4, r * .48); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = enemy.type === "elite" ? "#e0b2ff" : "#b5fff4"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-r * .7, .1 * r); ctx.lineTo(-r * 1.12, r * .42); ctx.moveTo(r * .7, .1 * r); ctx.lineTo(r * 1.12, r * .42); ctx.stroke(); ctx.fillStyle = "#efffff"; ctx.beginPath(); ctx.ellipse(-r * .28, -r * .25, r * .1, r * .18, 0, 0, Math.PI * 2); ctx.ellipse(r * .28, -r * .25, r * .1, r * .18, 0, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = enemy.type === "elite" ? "#6d4d8f" : "#526f6b"; ctx.shadowBlur = 10; ctx.shadowColor = enemy.type === "elite" ? "#b96fff" : "#8bc5ba"; ctx.fillRect(-r * .72, -r * .67, r * 1.44, r * 1.38); ctx.shadowBlur = 0; ctx.fillStyle = enemy.type === "elite" ? "#9f75bf" : "#78958f"; ctx.fillRect(-r * .92, -r * .45, r * .35, r * 1.05); ctx.fillRect(r * .57, -r * .45, r * .35, r * 1.05); ctx.fillRect(-r * .56, r * .55, r * .4, r * .52); ctx.fillRect(r * .16, r * .55, r * .4, r * .52);
+    ctx.strokeStyle = "#263b38"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-r * .15, -r * .65); ctx.lineTo(r * .08, -r * .2); ctx.lineTo(-r * .09, r * .12); ctx.lineTo(r * .2, r * .5); ctx.stroke(); ctx.fillStyle = "#baffee"; ctx.fillRect(-r * .38, -r * .24, r * .2, r * .14); ctx.fillRect(r * .18, -r * .24, r * .2, r * .14); ctx.shadowBlur = 14; ctx.shadowColor = enemy.type === "elite" ? "#d694ff" : "#73f6d3"; ctx.fillStyle = enemy.type === "elite" ? "#dca5ff" : "#8ff8dc"; ctx.beginPath(); ctx.moveTo(0, -.1 * r); ctx.lineTo(.22 * r, .2 * r); ctx.lineTo(0, .5 * r); ctx.lineTo(-.22 * r, .2 * r); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+}
+
+function drawPlayerFigure(ctx: CanvasRenderingContext2D, x: number, y: number, time: number, invulnerable: boolean, moving: boolean, facing: number, ascended: boolean) {
+  const bob = Math.sin(time * (moving ? 10 : 4)) * (moving ? 1.8 : .8);
+  ctx.save(); ctx.translate(x, y + bob); ctx.scale(facing < 0 ? -1 : 1, 1); ctx.globalAlpha = invulnerable && Math.floor(time * 20) % 2 ? .45 : 1;
+  ctx.fillStyle = "rgba(0,0,0,.38)"; ctx.beginPath(); ctx.ellipse(0, 15, 17, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = ascended ? 30 : 20; ctx.shadowColor = ascended ? "#ffe685" : "#62efd0"; ctx.fillStyle = ascended ? "rgba(255,225,112,.16)" : "rgba(99,241,209,.12)"; ctx.beginPath(); ctx.arc(0, 0, (ascended ? 31 : 25) + Math.sin(time * 4) * 2, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = ascended ? "#fff7d1" : "#d9fff5"; ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(-15, 17); ctx.lineTo(-5, 20); ctx.lineTo(0, 15); ctx.lineTo(5, 20); ctx.lineTo(15, 17); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#42a98e"; ctx.beginPath(); ctx.moveTo(-6, -3); ctx.lineTo(-17, 7); ctx.lineTo(-13, 11); ctx.lineTo(-4, 6); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(6, -3); ctx.lineTo(17, 7); ctx.lineTo(13, 11); ctx.lineTo(4, 6); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#2e9c83"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(0, 16); ctx.stroke(); ctx.fillStyle = "#e8c59f"; ctx.beginPath(); ctx.arc(0, -10, 7.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#153c36"; ctx.beginPath(); ctx.arc(0, -13, 7.6, Math.PI, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(0, -20, 3.4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#153c36"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-4, -20); ctx.lineTo(4, -20); ctx.stroke();
+  ctx.fillStyle = "#173d37"; ctx.beginPath(); ctx.arc(-2.8, -9.5, .8, 0, Math.PI * 2); ctx.arc(2.8, -9.5, .8, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 9; ctx.shadowColor = "#ffd76d"; ctx.fillStyle = "#ffe48c"; ctx.fillRect(-2, 2, 4, 7); if (ascended) { ctx.strokeStyle = "#ffeaa1"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -12, 13 + Math.sin(time * 3) * 1.5, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); } ctx.shadowBlur = 0; ctx.restore();
+}
+
+function drawBurstEffect(ctx: CanvasRenderingContext2D, burst: Burst, time: number) {
+  const alpha = Math.min(1, burst.life * 4); ctx.save(); ctx.globalAlpha = alpha; ctx.translate(burst.x, burst.y);
+  if (burst.kind === "lightning") { ctx.shadowBlur = 18; ctx.shadowColor = "#a87cff"; ctx.strokeStyle = "#eee5ff"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-10, -190); for (let i = 1; i <= 7; i++) ctx.lineTo(Math.sin(i * 5.7 + burst.x) * 13, -190 + i * 27); ctx.stroke(); ctx.strokeStyle = "#9f78ff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -82); ctx.lineTo(-28, -52); ctx.lineTo(-9, -30); ctx.moveTo(3, -62); ctx.lineTo(31, -42); ctx.stroke(); ctx.shadowBlur = 0; }
+  if (burst.kind === "fire") { for (let i = 0; i < 10; i++) { const a = i * Math.PI * .2 + time, distance = burst.r * (.38 + (1 - burst.life) * .45), size = 5 + (i % 3) * 2; ctx.fillStyle = i % 2 ? "#ffd36c" : "#ff6845"; ctx.shadowBlur = 12; ctx.shadowColor = "#ff5e38"; ctx.beginPath(); ctx.arc(Math.cos(a) * distance, Math.sin(a) * distance, size * alpha, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; }
+  if (burst.kind === "sword") { ctx.strokeStyle = "#baf8ff"; ctx.shadowBlur = 15; ctx.shadowColor = "#62e7ff"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, burst.r, -.75, .75); ctx.stroke(); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, burst.r * .72, Math.PI - .75, Math.PI + .75); ctx.stroke(); ctx.shadowBlur = 0; }
+  if (burst.kind === "heal") { ctx.strokeStyle = "#8fffd8"; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0, 0, burst.r * (.45 + i * .25), 0, Math.PI * 2); ctx.stroke(); } }
+  if (burst.kind === "spirit") { ctx.strokeStyle = "#fff2a3"; ctx.shadowBlur = 24; ctx.shadowColor = "#62f5d0"; for (let i = 0; i < 3; i++) { ctx.lineWidth = 5 - i; ctx.beginPath(); ctx.arc(0, 0, burst.r * (.35 + i * .25), time * (1 + i * .3), time * (1 + i * .3) + Math.PI * 1.35); ctx.stroke(); } for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6 + time; ctx.beginPath(); ctx.moveTo(Math.cos(a) * burst.r * .35, Math.sin(a) * burst.r * .35); ctx.lineTo(Math.cos(a) * burst.r, Math.sin(a) * burst.r); ctx.stroke(); } ctx.shadowBlur = 0; }
+  if (burst.kind === "pickup") { ctx.globalCompositeOperation = "screen"; ctx.shadowBlur = 30; ctx.shadowColor = burst.color; for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8 + time * 2, inner = burst.r * .22, outer = burst.r * (.78 + (i % 3) * .12); ctx.strokeStyle = i % 2 ? "#ffffff" : burst.color; ctx.lineWidth = i % 2 ? 2 : 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner); ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer); ctx.stroke(); } ctx.shadowBlur = 0; ctx.globalCompositeOperation = "source-over"; }
+  ctx.beginPath(); ctx.arc(0, 0, burst.r * (1.08 - burst.life), 0, Math.PI * 2); ctx.fillStyle = `${burst.color}30`; ctx.fill(); ctx.strokeStyle = burst.color; ctx.lineWidth = burst.kind === "hit" ? 4 : 2; ctx.stroke(); ctx.restore();
+}
+
+function drawProjectileFigure(ctx: CanvasRenderingContext2D, projectile: Projectile) {
+  const len = Math.hypot(projectile.vx, projectile.vy) || 1, nx = projectile.vx / len, ny = projectile.vy / len; ctx.save();
+  if (projectile.kind === "fire") { for (let i = 3; i >= 1; i--) { ctx.globalAlpha = .16 + i * .12; ctx.fillStyle = i % 2 ? "#ff5a39" : "#ffc45f"; ctx.beginPath(); ctx.arc(projectile.x - nx * i * 8, projectile.y - ny * i * 8, projectile.r * (1 - i * .16), 0, Math.PI * 2); ctx.fill(); } }
+  else { ctx.strokeStyle = "rgba(118,232,255,.55)"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(projectile.x - nx * 28, projectile.y - ny * 28); ctx.lineTo(projectile.x, projectile.y); ctx.stroke(); }
+  ctx.globalAlpha = 1; ctx.shadowBlur = 17; ctx.shadowColor = projectile.kind === "fire" ? "#ff744d" : "#7cecff"; ctx.fillStyle = projectile.kind === "fire" ? "#ffd06b" : "#e1fbff"; ctx.beginPath(); ctx.arc(projectile.x, projectile.y, projectile.r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+
+function drawPickupFigure(ctx: CanvasRenderingContext2D, pickup: Pickup, time: number) {
+  const info: Record<PickupKind, { color: string; glyph: string }> = { healing: { color: "#78ffbf", glyph: "丹" }, thunder: { color: "#bd96ff", glyph: "雷" }, magnet: { color: "#73ddff", glyph: "吸" }, fury: { color: "#ffbf5f", glyph: "狂" } }, style = info[pickup.kind], bob = Math.sin(time * 4 + pickup.id) * 5, pulse = 1 + Math.sin(time * 6 + pickup.id) * .08;
+  ctx.save(); ctx.translate(pickup.x, pickup.y + bob); ctx.rotate(time * .35); ctx.globalAlpha = Math.min(1, pickup.life * 2); ctx.shadowBlur = 28; ctx.shadowColor = style.color; ctx.strokeStyle = style.color; ctx.lineWidth = 2.5; ctx.fillStyle = "rgba(5,25,28,.88)"; ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, radius = (i % 2 ? 21 : 27) * pulse; const x = Math.cos(a) * radius, y = Math.sin(a) * radius; if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.rotate(-time * .35); ctx.fillStyle = style.color; ctx.font = "800 16px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(style.glyph, 0, 1); ctx.shadowBlur = 0; ctx.restore();
+}
+
+function drawWorldDecor(ctx: CanvasRenderingContext2D, g: GameState, wave: boolean) {
+  const cell = 170, minX = Math.floor((g.player.x - g.width * .65) / cell), maxX = Math.ceil((g.player.x + g.width * .65) / cell), minY = Math.floor((g.player.y - g.height * .65) / cell), maxY = Math.ceil((g.player.y + g.height * .65) / cell);
+  ctx.save(); ctx.lineWidth = 1;
+  for (let gx = minX; gx <= maxX; gx++) for (let gy = minY; gy <= maxY; gy++) { const seed = Math.abs(Math.sin(gx * 91.73 + gy * 47.19) * 43758.5453) % 1; if (seed < .38) continue; const x = gx * cell + (seed - .5) * 70, y = gy * cell + ((seed * 7) % 1 - .5) * 70, size = 10 + seed * 18; ctx.save(); ctx.translate(x, y); ctx.rotate(seed * Math.PI); ctx.globalAlpha = .09 + seed * .07; ctx.strokeStyle = wave ? "#d98cff" : "#71d7ba"; ctx.beginPath(); ctx.arc(0, 0, size, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-size, 0); ctx.lineTo(0, -size); ctx.lineTo(size, 0); ctx.lineTo(0, size); ctx.closePath(); ctx.stroke(); ctx.fillStyle = wave ? "rgba(183,89,226,.08)" : "rgba(81,190,158,.07)"; ctx.fill(); ctx.restore(); }
+  const aura = 90 + Math.sin(g.time * 1.5) * 8; ctx.globalAlpha = .12; ctx.strokeStyle = wave ? "#d78cff" : "#74e9c7"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(g.player.x, g.player.y, aura, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([4, 13]); ctx.beginPath(); ctx.arc(g.player.x, g.player.y, aura + 20, -g.time * .35, Math.PI * 1.55 - g.time * .35); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+}
+
+function Game({ gearAttack, gearHp, gearEffects, onFinish }: { gearAttack: number; gearHp: number; gearEffects: GearEffectKey[]; onFinish: (r: RunResult) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null), wrapRef = useRef<HTMLDivElement>(null), stateRef = useRef<GameState | null>(null), keysRef = useRef<Set<string>>(new Set()), stickRef = useRef({ x: 0, y: 0 }), pausedRef = useRef(false), dashRef = useRef(0);
+  const [hud, setHud] = useState({ hp: 100, maxHp: 100, level: 1, xp: 0, need: 18, time: 0, kills: 0, stones: 0, boss: false, dash: 0, combo: 0, wave: false, fury: 0 }); const [choices, setChoices] = useState<SkillKey[] | null>(null); const [paused, setPaused] = useState(false); const [dropToast, setDropToast] = useState<Gear | null>(null); const [pickupToast, setPickupToast] = useState(""); const [ascendToast, setAscendToast] = useState(""); const endedRef = useRef(false);
+  const stopRun = useCallback((victory = false) => { if (endedRef.current) return; const g = stateRef.current; if (!g) return; endedRef.current = true; onFinish({ time: g.time, kills: g.kills, stones: g.stones, drops: g.drops, victory }); }, [onFinish]);
+  useEffect(() => { const down = (e: KeyboardEvent) => { keysRef.current.add(e.key.toLowerCase()); if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) e.preventDefault(); }, up = (e: KeyboardEvent) => keysRef.current.delete(e.key.toLowerCase()); window.addEventListener("keydown", down); window.addEventListener("keyup", up); return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); }; }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current, wrap = wrapRef.current; if (!canvas || !wrap) return; const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const resize = () => { const rect = wrap.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2); canvas.width = rect.width * dpr; canvas.height = rect.height * dpr; canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (stateRef.current) { stateRef.current.width = rect.width; stateRef.current.height = rect.height; } };
+    resize(); const ro = new ResizeObserver(resize); ro.observe(wrap); const rect = wrap.getBoundingClientRect();
+    stateRef.current = { width: rect.width, height: rect.height, player: { x: 0, y: 0, hp: 100 + gearHp, maxHp: 100 + gearHp, level: 1, xp: 0, need: 14, speed: 215, damage: 16 + gearAttack, invuln: 0, facing: 1 }, enemies: [], projectiles: [], orbs: [], pickups: [], bursts: [], particles: [], texts: [], time: 0, kills: 0, stones: 0, drops: [], skills: { sword: 1, lightning: 0, flame: 0, might: 0, wind: 0, vitality: 0 }, spawnTimer: 0, pickupTimer: 8, shotTimer: 0, lightningTimer: .7, fireTimer: 0, swordTimer: 0, nextElite: 16, nextBoss: 70, combo: 0, comboTimer: 0, furyTimer: 0, shake: 0, flash: 0, flashColor: "#ffffff", id: 0 };
+    let frame = 0, last = performance.now(), hudTimer = 0;
+    const spawnEnemy = (g: GameState, type: Enemy["type"] = "mob") => { const side = Math.floor(Math.random() * 4), margin = 52; let x = g.player.x, y = g.player.y; if (side === 0) { x += (Math.random() - .5) * g.width; y -= g.height / 2 + margin; } else if (side === 1) { x += g.width / 2 + margin; y += (Math.random() - .5) * g.height; } else if (side === 2) { x += (Math.random() - .5) * g.width; y += g.height / 2 + margin; } else { x -= g.width / 2 + margin; y += (Math.random() - .5) * g.height; } const scale = 1 + g.time / 150, hp = type === "boss" ? 1050 * scale : type === "elite" ? 135 * scale : (20 + g.time * .2) * scale; g.enemies.push({ id: ++g.id, x, y, hp, maxHp: hp, speed: type === "boss" ? 42 : type === "elite" ? 57 : 48 + Math.random() * 25, r: type === "boss" ? 35 : type === "elite" ? 22 : 13 + Math.random() * 4, type, variant: Math.floor(Math.random() * 3) as 0 | 1 | 2, hit: 0, hurt: 0 }); };
+    const spark = (g: GameState, x: number, y: number, color: string, count: number, force = 150) => { for (let i = 0; i < count && g.particles.length < 600; i++) { const a = Math.random() * Math.PI * 2, speed = force * (.35 + Math.random() * .75), life = .24 + Math.random() * .34; g.particles.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life, maxLife: life, size: 1.5 + Math.random() * 3.5, color }); } };
+    const spawnPickup = (g: GameState) => {
+      const kinds: PickupKind[] = ["healing", "thunder", "magnet", "fury"], angle = Math.random() * Math.PI * 2, distance = 135 + Math.random() * 170;
+      g.pickups.push({ id: ++g.id, x: g.player.x + Math.cos(angle) * distance, y: g.player.y + Math.sin(angle) * distance, kind: kinds[Math.floor(Math.random() * kinds.length)], life: 16 });
+    };
+    const damageEnemy = (g: GameState, enemy: Enemy, amount: number, color = "#e7fbff", allowEffect = true) => {
+      if (enemy.hp <= 0) return;
+      const critical = Math.random() < (.12 + (gearEffects.includes("thunderEdge") ? .08 : 0)), dealt = amount * (critical ? 1.85 : 1);
+      enemy.hp -= dealt; enemy.hurt = .1;
+      const pushX = enemy.x - g.player.x, pushY = enemy.y - g.player.y, pushLen = Math.hypot(pushX, pushY) || 1, push = enemy.type === "mob" ? (critical ? 16 : 7) : 2;
+      enemy.x += pushX / pushLen * push; enemy.y += pushY / pushLen * push;
+      g.texts.push({ x: enemy.x, y: enemy.y - enemy.r, value: critical ? `暴擊 ${Math.round(dealt)}` : Math.round(dealt).toString(), life: critical ? .72 : .5, color: critical ? "#fff099" : color });
+      if (critical) { g.shake = Math.max(g.shake, 5); g.flash = Math.max(g.flash, .08); g.flashColor = "#fff099"; spark(g, enemy.x, enemy.y, "#fff099", 9, 155); if (allowEffect && gearEffects.includes("thunderEdge")) { const chained = [...g.enemies].filter((other) => other !== enemy && other.hp > 0).sort((a, b) => Math.hypot(a.x - enemy.x, a.y - enemy.y) - Math.hypot(b.x - enemy.x, b.y - enemy.y))[0]; if (chained && Math.hypot(chained.x - enemy.x, chained.y - enemy.y) < 190) { g.bursts.push({ x: chained.x, y: chained.y, r: 45, life: .42, color: "#b99aff", kind: "lightning" }); damageEnemy(g, chained, dealt * .48, "#e0d5ff", false); } } }
+      if (enemy.hp > 0) return;
+      const idx = g.enemies.indexOf(enemy); if (idx >= 0) g.enemies.splice(idx, 1); g.kills++; g.combo++; g.comboTimer = 2.35;
+      g.shake = Math.max(g.shake, enemy.type === "boss" ? 14 : enemy.type === "elite" ? 8 : 4.5);
+      const deathColor = enemy.type === "boss" ? "#ff7895" : enemy.type === "elite" ? "#c997ff" : "#74f1cd";
+      g.flash = Math.max(g.flash, enemy.type === "boss" ? .42 : enemy.type === "elite" ? .18 : .035); g.flashColor = deathColor;
+      spark(g, enemy.x, enemy.y, deathColor, enemy.type === "boss" ? 48 : enemy.type === "elite" ? 26 : 12, enemy.type === "boss" ? 330 : 210); g.bursts.push({ x: enemy.x, y: enemy.y, r: enemy.r * 2.15, life: .38, color: deathColor, kind: "ring" });
+      const xpCount = enemy.type === "boss" ? 18 : enemy.type === "elite" ? 7 : 1; for (let i = 0; i < xpCount; i++) g.orbs.push({ x: enemy.x + (Math.random() - .5) * 28, y: enemy.y + (Math.random() - .5) * 28, value: enemy.type === "boss" ? 4 : enemy.type === "elite" ? 3 : 2 });
+      g.stones += enemy.type === "boss" ? 45 : enemy.type === "elite" ? 12 : Math.random() < .18 ? 1 : 0;
+      if (gearEffects.includes("guardian") && g.kills % 20 === 0) { const heal = Math.max(4, g.player.maxHp * .06); g.player.hp = Math.min(g.player.maxHp, g.player.hp + heal); g.bursts.push({ x: g.player.x, y: g.player.y, r: 38, life: .55, color: "#8fffd8", kind: "heal" }); g.texts.push({ x: g.player.x, y: g.player.y - 38, value: `生息 +${Math.round(heal)}`, life: .8, color: "#9bffdd" }); }
+      if (g.combo % 12 === 0) { g.stones += 2; g.shake = Math.max(g.shake, 12); g.flash = .3; g.flashColor = "#fff09b"; g.bursts.push({ x: g.player.x, y: g.player.y, r: 170, life: .7, color: "#fff09b", kind: "spirit" }); g.texts.push({ x: g.player.x, y: g.player.y - 42, value: "劍意爆發！", life: 1, color: "#fff09b" }); spark(g, g.player.x, g.player.y, "#9affdf", 38, 290); [...g.enemies].filter((other) => Math.hypot(other.x - g.player.x, other.y - g.player.y) < 175).slice(0, 22).forEach((other) => damageEnemy(g, other, g.player.damage * 1.12, "#fff3ad", false)); }
+      if (enemy.type !== "mob") { const gear = makeGear(g.player.level + Math.floor(g.time / 30), enemy.type === "boss" && Math.random() > .45 ? "史詩" : undefined); g.drops.push(gear); setDropToast(gear); window.setTimeout(() => setDropToast(null), 2600); }
+    };
+    const applyPickup = (g: GameState, pickup: Pickup) => {
+      const data: Record<PickupKind, { name: string; message: string; color: string }> = {
+        healing: { name: "回春丹", message: "回復 30% 氣血", color: "#78ffbf" }, thunder: { name: "天雷符", message: "雷擊全場妖物", color: "#bd96ff" }, magnet: { name: "聚靈幡", message: "吸收所有修為珠", color: "#73ddff" }, fury: { name: "狂靈符", message: "9 秒傷害與攻速暴增", color: "#ffbf5f" },
+      };
+      const item = data[pickup.kind];
+      if (pickup.kind === "healing") g.player.hp = Math.min(g.player.maxHp, g.player.hp + g.player.maxHp * .3);
+      if (pickup.kind === "magnet") { g.player.xp += g.orbs.reduce((sum, orb) => sum + orb.value, 0); g.orbs = []; }
+      if (pickup.kind === "fury") g.furyTimer = 9;
+      if (pickup.kind === "thunder") [...g.enemies].slice(0, 36).forEach((enemy) => { g.bursts.push({ x: enemy.x, y: enemy.y, r: 66, life: .55, color: item.color, kind: "lightning" }); damageEnemy(g, enemy, g.player.damage * 3.4, "#efe7ff", false); });
+      g.bursts.push({ x: pickup.x, y: pickup.y, r: 105, life: .75, color: item.color, kind: "pickup" }); spark(g, pickup.x, pickup.y, item.color, 42, 300); g.flash = .42; g.flashColor = item.color; g.shake = Math.max(g.shake, 11);
+      setPickupToast(`${item.name} · ${item.message}`); window.setTimeout(() => setPickupToast(""), 2400);
+    };
+    const nearest = (g: GameState) => g.enemies.reduce<Enemy | null>((best, e) => !best || Math.hypot(e.x - g.player.x, e.y - g.player.y) < Math.hypot(best.x - g.player.x, best.y - g.player.y) ? e : best, null);
+    const tick = (now: number) => {
+      const rawDt = Math.min((now - last) / 1000, .034); last = now; const g = stateRef.current; if (!g) return; const dt = pausedRef.current ? 0 : rawDt;
+      if (dt > 0) {
+        g.time += dt; dashRef.current = Math.max(0, dashRef.current - dt); g.player.invuln = Math.max(0, g.player.invuln - dt); g.comboTimer = Math.max(0, g.comboTimer - dt); g.furyTimer = Math.max(0, g.furyTimer - dt); g.flash = Math.max(0, g.flash - dt * 1.9); if (g.comboTimer <= 0) g.combo = 0; g.shake = Math.max(0, g.shake - 25 * dt);
+        let mx = stickRef.current.x, my = stickRef.current.y; if (keysRef.current.has("a") || keysRef.current.has("arrowleft")) mx--; if (keysRef.current.has("d") || keysRef.current.has("arrowright")) mx++; if (keysRef.current.has("w") || keysRef.current.has("arrowup")) my--; if (keysRef.current.has("s") || keysRef.current.has("arrowdown")) my++; const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; } if (Math.abs(mx) > .08) g.player.facing = mx < 0 ? -1 : 1; const speed = g.player.speed * (1 + g.skills.wind * .08) * (gearEffects.includes("windStep") ? 1.12 : 1) * (g.furyTimer > 0 ? 1.15 : 1) * (g.player.invuln > .55 ? 2.1 : 1); g.player.x += mx * speed * dt; g.player.y += my * speed * dt;
+        const wave = g.time > 7 && g.time % 26 < 7.2; g.spawnTimer -= dt; if (g.spawnTimer <= 0 && g.enemies.length < 145) { const openingRush = g.time < 5, count = wave || openingRush ? 2 : 1; for (let i = 0; i < count; i++) spawnEnemy(g); if (!wave && !openingRush && g.time > 28 && Math.random() < .38) spawnEnemy(g); g.spawnTimer = wave ? .135 : openingRush ? .24 : Math.max(.18, .47 - g.time * .0026); } if (g.time >= g.nextElite) { spawnEnemy(g, "elite"); g.nextElite += 22; } if (g.time >= g.nextBoss) { spawnEnemy(g, "boss"); g.nextBoss += 80; }
+        g.pickupTimer -= dt; if (g.pickupTimer <= 0 && g.pickups.length < 2) { spawnPickup(g); g.pickupTimer = 12 + Math.random() * 7; }
+        const target = nearest(g), furyRate = g.furyTimer > 0 ? .62 : 1, damageScale = (1 + g.skills.might * .18) * (g.furyTimer > 0 ? 1.6 : 1); g.shotTimer -= dt;
+        if (target && g.shotTimer <= 0) { const dx = target.x - g.player.x, dy = target.y - g.player.y, len = Math.hypot(dx, dy) || 1; g.projectiles.push({ x: g.player.x, y: g.player.y, vx: dx / len * 575, vy: dy / len * 575, r: 6.4, damage: g.player.damage * damageScale, life: 1.7, kind: "bolt", pierce: 1 + Math.floor(g.skills.sword / 2) }); g.shotTimer = Math.max(.1, .39 * Math.pow(.91, g.skills.wind) * furyRate); }
+        if (g.skills.flame > 0) { g.fireTimer -= dt; if (target && g.fireTimer <= 0) { const dx = target.x - g.player.x, dy = target.y - g.player.y, len = Math.hypot(dx, dy) || 1; g.projectiles.push({ x: g.player.x, y: g.player.y, vx: dx / len * 315, vy: dy / len * 315, r: 11 + Math.max(0, g.skills.flame - 4), damage: g.player.damage * (.8 + g.skills.flame * .45) * damageScale, life: 2.3, kind: "fire", pierce: 1 + Math.floor(g.skills.flame / 4) }); g.fireTimer = Math.max(.34, (1.7 - g.skills.flame * .17) * furyRate); } }
+        if (g.skills.lightning > 0) { g.lightningTimer -= dt; if (g.lightningTimer <= 0 && g.enemies.length) { const count = 1 + g.skills.lightning + (g.skills.lightning >= 7 ? 3 : 0), victims = [...g.enemies].sort(() => Math.random() - .5).slice(0, count); victims.forEach((e) => { g.bursts.push({ x: e.x, y: e.y, r: 55 + g.skills.lightning * 3, life: .54, color: "#aa84ff", kind: "lightning" }); spark(g, e.x, e.y, "#c7b6ff", 10, 185); damageEnemy(g, e, g.player.damage * (1 + g.skills.lightning * .55) * damageScale, "#d6c4ff"); }); g.shake = Math.max(g.shake, g.skills.lightning >= 5 ? 8 : 4); if (g.skills.lightning >= 5) { g.flash = Math.max(g.flash, .12); g.flashColor = "#c6b3ff"; } g.lightningTimer = Math.max(.35, (2.35 - g.skills.lightning * .3) * furyRate); } }
+        g.swordTimer -= dt; if (g.swordTimer <= 0) { const resonance = gearEffects.includes("swordStorm") ? 1.25 : 1, radius = (58 + g.skills.sword * 8 + Math.max(0, g.skills.sword - 4) * 8) * resonance, swordHits = g.enemies.filter((e) => Math.hypot(e.x - g.player.x, e.y - g.player.y) < radius + e.r); swordHits.forEach((e) => damageEnemy(g, e, g.player.damage * (.38 + g.skills.sword * .17) * damageScale * resonance, "#8eeeff")); if (swordHits.length) { g.bursts.push({ x: g.player.x, y: g.player.y, r: radius, life: .38, color: "#79eaff", kind: "sword" }); spark(g, g.player.x, g.player.y, "#8eeeff", 8 + g.skills.sword * 2, 135); } g.swordTimer = Math.max(.1, (.47 - g.skills.sword * .047) * furyRate); }
+        for (let i = g.projectiles.length - 1; i >= 0; i--) { const p = g.projectiles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; let removed = p.life <= 0 || Math.abs(p.x - g.player.x) > g.width + 240 || Math.abs(p.y - g.player.y) > g.height + 240; if (!removed) for (const e of [...g.enemies]) if (Math.hypot(e.x - p.x, e.y - p.y) < e.r + p.r) { damageEnemy(g, e, p.damage, p.kind === "fire" ? "#ffb48e" : "#d9fbff"); const echo = p.kind === "bolt" && gearEffects.includes("flameEcho") && Math.random() < .14; if (p.kind === "fire" || echo) { const blastRadius = p.kind === "fire" ? 55 + g.skills.flame * 8 + Math.max(0, g.skills.flame - 4) * 10 : 42; g.bursts.push({ x: p.x, y: p.y, r: blastRadius, life: .52, color: "#ff784e", kind: "fire" }); spark(g, p.x, p.y, "#ff9a62", 8 + g.skills.flame * 2, 170); [...g.enemies].filter((other) => other !== e && Math.hypot(other.x - p.x, other.y - p.y) < blastRadius).forEach((other) => damageEnemy(g, other, p.damage * (p.kind === "fire" ? .68 : .38), "#ffb48e", false)); } if (--p.pierce <= 0) { removed = true; break; } } if (removed) g.projectiles.splice(i, 1); }
+        for (const e of g.enemies) { const dx = g.player.x - e.x, dy = g.player.y - e.y, len = Math.hypot(dx, dy) || 1; e.x += dx / len * e.speed * dt; e.y += dy / len * e.speed * dt; e.hit -= dt; e.hurt = Math.max(0, e.hurt - dt); if (len < e.r + 14 && e.hit <= 0 && g.player.invuln <= 0) { const rawDamage = e.type === "boss" ? 22 : e.type === "elite" ? 14 : 7; g.player.hp -= rawDamage * (gearEffects.includes("spiritBarrier") ? .85 : 1); e.hit = .65; g.player.invuln = .22; g.shake = Math.max(g.shake, 7); g.bursts.push({ x: g.player.x, y: g.player.y, r: 32, life: .26, color: "#ff4d70", kind: "hit" }); } }
+        for (let i = g.pickups.length - 1; i >= 0; i--) { const pickup = g.pickups[i]; pickup.life -= dt; if (Math.hypot(pickup.x - g.player.x, pickup.y - g.player.y) < 30) { applyPickup(g, pickup); g.pickups.splice(i, 1); } else if (pickup.life <= 0) g.pickups.splice(i, 1); }
+        for (let i = g.orbs.length - 1; i >= 0; i--) { const o = g.orbs[i], dx = g.player.x - o.x, dy = g.player.y - o.y, len = Math.hypot(dx, dy), magnet = gearEffects.includes("spiritSiphon") ? 240 : 155; if (len < magnet) { const speed = 400 + (magnet - len) * 2.1; o.x += dx / Math.max(len, 1) * speed * dt; o.y += dy / Math.max(len, 1) * speed * dt; } if (len < 20) { g.player.xp += o.value; g.orbs.splice(i, 1); } }
+        g.bursts.forEach((b) => b.life -= dt); g.bursts = g.bursts.filter((b) => b.life > 0); for (const p of g.particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= Math.pow(.025, dt); p.vy *= Math.pow(.025, dt); } g.particles = g.particles.filter((p) => p.life > 0); g.texts.forEach((t) => { t.life -= dt; t.y -= 28 * dt; }); g.texts = g.texts.filter((t) => t.life > 0);
+        if (g.player.xp >= g.player.need && !pausedRef.current) { g.player.xp -= g.player.need; g.player.level++; g.player.need = Math.round(g.player.need * 1.16 + 4); const pool = (Object.keys(skillInfo) as SkillKey[]).filter((k) => g.skills[k] < 8); if (pool.length) { pausedRef.current = true; setChoices([...pool].sort(() => Math.random() - .5).slice(0, 3)); } else { g.player.damage *= 1.08; g.player.hp = Math.min(g.player.maxHp, g.player.hp + 12); } }
+        if (g.player.hp <= 0) { cancelAnimationFrame(frame); stopRun(false); return; }
+      }
+      const waveActive = g.time > 7 && g.time % 26 < 7.2;
+      ctx.clearRect(0, 0, g.width, g.height); const centerX = g.width / 2, centerY = g.height / 2, shakeX = (Math.random() - .5) * g.shake, shakeY = (Math.random() - .5) * g.shake, cameraX = centerX - g.player.x + shakeX, cameraY = centerY - g.player.y + shakeY; const bg = ctx.createRadialGradient(centerX, centerY, 20, centerX, centerY, Math.max(g.width, g.height)); bg.addColorStop(0, waveActive ? "#25324a" : "#174747"); bg.addColorStop(.48, waveActive ? "#141f35" : "#0a2c2d"); bg.addColorStop(1, "#031213"); ctx.fillStyle = bg; ctx.fillRect(0, 0, g.width, g.height);
+      const mistA = ctx.createRadialGradient(g.width * (.3 + Math.sin(g.time * .08) * .08), g.height * .25, 0, g.width * .3, g.height * .25, g.width * .72); mistA.addColorStop(0, waveActive ? "rgba(150,86,216,.14)" : "rgba(64,224,184,.12)"); mistA.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = mistA; ctx.fillRect(0, 0, g.width, g.height);
+      ctx.strokeStyle = waveActive ? "rgba(177,116,230,.12)" : "rgba(110,218,190,.11)"; ctx.lineWidth = 1; const grid = 52, ox = ((cameraX % grid) + grid) % grid, oy = ((cameraY % grid) + grid) % grid; for (let x = ox - grid; x < g.width; x += grid) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, g.height); ctx.stroke(); } for (let y = oy - grid; y < g.height; y += grid) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(g.width, y); ctx.stroke(); } ctx.save(); ctx.translate(cameraX, cameraY); drawWorldDecor(ctx, g, waveActive);
+      for (const b of g.bursts) drawBurstEffect(ctx, b, g.time); ctx.globalAlpha = 1; for (const p of g.particles) { ctx.globalAlpha = Math.max(0, p.life / p.maxLife); ctx.strokeStyle = p.color; ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color; ctx.lineWidth = Math.max(1, p.size * .7); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * .035, p.y - p.vy * .035); ctx.stroke(); ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+      for (const pickup of g.pickups) drawPickupFigure(ctx, pickup, g.time);
+      for (const o of g.orbs) { ctx.shadowBlur = 12; ctx.shadowColor = "#66ffd1"; ctx.fillStyle = "#8dffda"; ctx.beginPath(); ctx.arc(o.x, o.y, 4.2, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0;
+      for (const e of g.enemies) { drawEnemyFigure(ctx, e, g.time); if (e.type !== "mob") { const w = e.r * 2.5; ctx.fillStyle = "rgba(0,0,0,.62)"; ctx.fillRect(e.x - w / 2, e.y - e.r - 15, w, 5); ctx.fillStyle = e.type === "boss" ? "#ff4f75" : "#bc7aff"; ctx.fillRect(e.x - w / 2, e.y - e.r - 15, w * Math.max(0, e.hp / e.maxHp), 5); } }
+      for (const p of g.projectiles) drawProjectileFigure(ctx, p); ctx.shadowBlur = 0;
+      const swordCount = Math.min(8, g.skills.sword), orbitTime = g.time * (3.2 + g.skills.sword * .12); for (let i = 0; i < swordCount; i++) { const a = orbitTime + i * Math.PI * 2 / swordCount, rr = 52 + g.skills.sword * 6, x = g.player.x + Math.cos(a) * rr, y = g.player.y + Math.sin(a) * rr; ctx.save(); ctx.translate(x, y); ctx.rotate(a + Math.PI / 2); ctx.fillStyle = g.skills.sword >= 7 ? "#fff0a0" : "#a9f4ff"; ctx.shadowBlur = g.skills.sword >= 5 ? 22 : 12; ctx.shadowColor = g.skills.sword >= 7 ? "#ffd65d" : "#6ce7ff"; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(4, 5); ctx.lineTo(0, 11); ctx.lineTo(-4, 5); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      const moving = Math.hypot(stickRef.current.x, stickRef.current.y) > .04 || keysRef.current.size > 0, ascended = Object.values(g.skills).some((level) => level >= 5); drawPlayerFigure(ctx, g.player.x, g.player.y, g.time, g.player.invuln > 0, moving, g.player.facing, ascended); for (const t of g.texts) { ctx.globalAlpha = Math.min(1, t.life * 3); ctx.fillStyle = t.color; ctx.font = t.value.includes("暴擊") || t.value.includes("爆發") ? "800 15px sans-serif" : "650 13px sans-serif"; ctx.textAlign = "center"; ctx.shadowBlur = 8; ctx.shadowColor = t.color; ctx.fillText(t.value, t.x, t.y); } ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.restore(); const vignette = ctx.createRadialGradient(centerX, centerY, Math.min(g.width, g.height) * .25, centerX, centerY, Math.max(g.width, g.height) * .72); vignette.addColorStop(0, "rgba(0,0,0,0)"); vignette.addColorStop(1, waveActive ? "rgba(32,4,43,.52)" : "rgba(0,8,10,.55)"); ctx.fillStyle = vignette; ctx.fillRect(0, 0, g.width, g.height); if (g.flash > 0) { ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = Math.min(.38, g.flash); ctx.fillStyle = g.flashColor; ctx.fillRect(0, 0, g.width, g.height); ctx.restore(); }
+      hudTimer -= rawDt; if (hudTimer <= 0) { setHud({ hp: Math.max(0, g.player.hp), maxHp: g.player.maxHp, level: g.player.level, xp: g.player.xp, need: g.player.need, time: g.time, kills: g.kills, stones: g.stones, boss: g.enemies.some((e) => e.type === "boss"), dash: dashRef.current, combo: g.combo, wave: waveActive, fury: g.furyTimer }); hudTimer = .1; } frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick); return () => { cancelAnimationFrame(frame); ro.disconnect(); };
+  }, [gearAttack, gearHp, gearEffects, stopRun]);
+  const chooseSkill = (key: SkillKey) => { const g = stateRef.current; if (!g) return; const nextLevel = g.skills[key] + 1; g.skills[key] = nextLevel; if (key === "vitality") { g.player.maxHp += 18 + nextLevel * 2; g.player.hp = Math.min(g.player.maxHp, g.player.hp + 36 + nextLevel * 3); } if ([3, 5, 7].includes(nextLevel)) { const label = `${skillTier(nextLevel)} · ${skillDisplayName(key, nextLevel)}`; setAscendToast(label); window.setTimeout(() => setAscendToast(""), 2600); g.flash = .5; g.flashColor = skillInfo[key].color; g.shake = 13; g.bursts.push({ x: g.player.x, y: g.player.y, r: 185, life: .8, color: skillInfo[key].color, kind: "pickup" }); } setChoices(null); pausedRef.current = paused; };
+  const togglePause = () => { const next = !paused; setPaused(next); pausedRef.current = next || !!choices; };
+  const dash = () => { const g = stateRef.current; if (g && dashRef.current <= 0) { g.player.invuln = .8; dashRef.current = gearEffects.includes("windStep") ? 3 : 4; } };
+  return <main className="game-screen" ref={wrapRef}><canvas ref={canvasRef} className="game-canvas" />
+    <div className="game-hud"><div className="hp-wrap"><span>氣血</span><div><i style={{ width: `${hud.hp / hud.maxHp * 100}%` }} /></div><b>{Math.ceil(hud.hp)} / {hud.maxHp}</b></div><div className="run-center"><b>{formatTime(hud.time)}</b><span>練氣 Lv.{hud.level} · 擊敗 {hud.kills}</span></div><button className="pause-button" onClick={togglePause}>{paused ? <Play size={18} /> : "Ⅱ"}</button></div>
+    <div className="xp-bar"><i style={{ width: `${hud.xp / hud.need * 100}%` }} /><span>修為 {hud.xp} / {hud.need}</span></div><div className="run-resources"><CircleDollarSign size={15} /> {hud.stones}</div>{hud.combo >= 3 && <div className="combo-badge"><b>{hud.combo}</b><span>連斬</span></div>}{hud.fury > 0 && <div className="buff-badge"><b>狂靈</b><span>{hud.fury.toFixed(1)} 秒</span></div>}{hud.wave && <div className="wave-alert">妖潮來襲 · 靈力沸騰</div>}{hud.boss && <div className="boss-alert">首領降臨</div>}<Joystick valueRef={stickRef} />
+    <button className={`dash-button ${hud.dash > 0 ? "cooling" : ""}`} onClick={dash}><Wind size={23} /><span>{hud.dash > 0 ? hud.dash.toFixed(1) : "閃"}</span></button><div className="control-hint">拖曳左側圓盤移動 · 攻擊自動施放</div>
+    {dropToast && <div className="drop-toast" style={{ "--quality": qualities[dropToast.quality].color } as React.CSSProperties}><Sparkles size={19} /><div><small>{dropToast.quality}裝備</small><b>{dropToast.name}</b></div></div>}
+    {pickupToast && <div className="pickup-toast"><Sparkles size={20} /><b>{pickupToast}</b></div>}
+    {ascendToast && <div className="ascend-toast"><small>功法升階</small><b>{ascendToast}</b></div>}
+    {choices && <div className="choice-overlay"><div className="choice-box"><p>修為突破 · 選擇一項</p><h2>領悟或升階</h2><div className="choice-grid">{choices.map((key) => { const next = (stateRef.current?.skills[key] ?? 0) + 1; return <button key={key} onClick={() => chooseSkill(key)} style={{ "--skill": skillInfo[key].color } as React.CSSProperties}><span>{skillInfo[key].icon}</span><div><em className="tier-badge">{skillTier(next)}</em><b>{skillDisplayName(key, next)}</b><small>Lv.{next} · {skillInfo[key].description}</small></div></button>; })}</div></div></div>}
+    {paused && !choices && <div className="pause-overlay"><div><h2>暫停歷練</h2><p>目前進度已暫停</p><button className="primary-button compact" onClick={togglePause}><Play size={18} /> 繼續</button><button className="quit-button" onClick={() => stopRun(false)}><ArrowLeft size={17} /> 返回洞府並結算</button></div></div>}
+  </main>;
+}
+
+function Joystick({ valueRef }: { valueRef: React.MutableRefObject<{ x: number; y: number }> }) {
+  const baseRef = useRef<HTMLDivElement>(null), knobRef = useRef<HTMLSpanElement>(null);
+  const update = (clientX: number, clientY: number) => { const base = baseRef.current, knob = knobRef.current; if (!base || !knob) return; const r = base.getBoundingClientRect(), rawX = clientX - (r.left + r.width / 2), rawY = clientY - (r.top + r.height / 2), rawLen = Math.hypot(rawX, rawY), max = r.width * .34, displayScale = rawLen > max ? max / rawLen : 1, displayX = rawX * displayScale, displayY = rawY * displayScale; knob.style.transform = `translate3d(${displayX}px, ${displayY}px, 0)`; const strength = rawLen < 2 ? 0 : Math.pow(Math.min(1, rawLen / max), .68); valueRef.current = rawLen < 2 ? { x: 0, y: 0 } : { x: rawX / rawLen * strength, y: rawY / rawLen * strength }; };
+  const move = (e: React.PointerEvent) => { if (!e.currentTarget.hasPointerCapture(e.pointerId)) return; e.preventDefault(); const samples = e.nativeEvent.getCoalescedEvents?.(), point = samples?.[samples.length - 1] ?? e.nativeEvent; update(point.clientX, point.clientY); };
+  const end = () => { if (knobRef.current) knobRef.current.style.transform = "translate3d(0, 0, 0)"; valueRef.current = { x: 0, y: 0 }; };
+  return <div ref={baseRef} className="joystick" onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); update(e.clientX, e.clientY); }} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}><span ref={knobRef} /></div>;
+}

@@ -1,0 +1,11 @@
+{
+  "name": "渡劫行者",
+  "short_name": "渡劫行者",
+  "description": "修仙 Roguelite 割草刷寶遊戲",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#071b1c",
+  "theme_color": "#071b1c",
+  "orientation": "portrait",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
