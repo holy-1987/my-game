@@ -4,7 +4,7 @@
   const SIZE = 10;
   const SAVE_KEY = "princess-star-kingdom-v1";
   const UNLIMITED_TOOLS = true;
-  const POWER_STAGGER_MS = 360;
+  const POWER_STAGGER_MS = 600;
   const POWER_LABEL = {
     row: "皇家橫向火箭：轟擊整個橫排",
     col: "皇家直向火箭：轟擊整個直排",
@@ -22,16 +22,16 @@
     { symbol: "❀", name: "珍珠玫瑰", color: "pearl" }
   ];
   const DISTRICTS = [
-    { name: "玫瑰拱門", icon: "🌹", cost: 3 },
-    { name: "水晶噴泉", icon: "⛲", cost: 5 },
-    { name: "米露小屋", icon: "🏠", cost: 7 },
-    { name: "星光花圃", icon: "🌷", cost: 9 },
-    { name: "皇家茶亭", icon: "🫖", cost: 11 },
-    { name: "晨曦宮殿", icon: "🏰", cost: 14 }
+    { name: "玫瑰拱門", icon: "🌹", visuals: ["🌹", "🌹🏛️", "💐👑"], cost: 3 },
+    { name: "水晶噴泉", icon: "⛲", visuals: ["⛲", "💦⛲", "✨⛲"], cost: 5 },
+    { name: "娜娜皇家莊園", icon: "🏠", visuals: ["🏠", "🏡", "🐈‍⬛🏡"], cost: 7 },
+    { name: "星光御花園", icon: "🌷", visuals: ["🌷", "🌺🌷", "✨💐"], cost: 9 },
+    { name: "皇家茶亭", icon: "🫖", visuals: ["🫖", "🫖🏛️", "👑🏛️"], cost: 11 },
+    { name: "晨曦大宮殿", icon: "🏰", visuals: ["🏰", "🏯", "✨🏰👑"], cost: 14 }
   ];
   const EVENTS = [
     { name: "玫瑰星雨", copy: "收集皇冠紅寶石，獎勵魔法露 ×2", targetType: 1, moves: 22, target: 30, left: "🌹", right: "🌠", theme: "rose" },
-    { name: "月光寶藏", copy: "收集紫月水晶，召喚米露加速蓄力", targetType: 4, moves: 24, target: 32, left: "🌙", right: "🗝️", theme: "moon" },
+    { name: "月光寶藏", copy: "收集紫月水晶，召喚娜娜加速蓄力", targetType: 4, moves: 24, target: 32, left: "🌙", right: "🗝️", theme: "moon" },
     { name: "太陽慶典", copy: "收集皇家太陽石，大消除更容易獲得祝福", targetType: 2, moves: 20, target: 28, left: "☀️", right: "🎊", theme: "sun" }
   ];
 
@@ -47,6 +47,8 @@
     bossMission: $("bossMission"), goalIcon: $("goalIcon"), goalLeft: $("goalLeft"),
     bossHpText: $("bossHpText"), bossHpBar: $("bossHpBar"), petMeter: $("petMeter"), petCharge: $("petCharge"),
     challengeMission: $("challengeMission"), challengeText: $("challengeText"),
+    crownMeter: $("crownMeter"), crownCharge: $("crownCharge"), crownText: $("crownText"),
+    wishMeter: $("wishMeter"), wishCharge: $("wishCharge"), wishText: $("wishText"),
     wandBtn: $("wandBtn"), wandCount: $("wandCount"), roseBtn: $("roseBtn"),
     roseCount: $("roseCount"), shuffleBtn: $("shuffleBtn"), shuffleCount: $("shuffleCount"),
     hourglassBtn: $("hourglassBtn"), hourglassCount: $("hourglassCount"), toolHint: $("toolHint"),
@@ -109,7 +111,8 @@
   }
 
   function dailyEvent() {
-    const day = Math.floor(Date.now() / 86400000);
+    const today = new Date();
+    const day = Math.floor(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86400000);
     return EVENTS[day % EVENTS.length];
   }
 
@@ -149,6 +152,7 @@
       number, isBoss, isEvent, eventName: event?.name ?? "", targetType, target, remaining: target,
       bossMax, bossHp: bossMax, moves, pet: 0,
       challengeGoal: 3, challengeUsed: 0, challengeComplete: false,
+      crownEnergy: 0, crownGoal: 3, wishEnergy: 0, wishGoal: 4,
       patternName: pattern.name, blocked: pattern.blocked,
       tools: UNLIMITED_TOOLS
         ? { wand: Infinity, rose: Infinity, shuffle: Infinity, hourglass: Infinity }
@@ -157,7 +161,7 @@
     };
   }
 
-  function buildFreshBoard() {
+  function buildFreshBoard(attempt = 0) {
     const fresh = new Array(SIZE * SIZE);
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
@@ -179,6 +183,7 @@
         fresh[index] = tile(type);
       }
     }
+    if (attempt < 6 && !hasPossibleMove(fresh)) return buildFreshBoard(attempt + 1);
     return fresh;
   }
 
@@ -209,7 +214,12 @@
       node.className = `district district-${index}${index < state.built ? " done" : ""}${isCurrent ? " current" : ""}${index === lastBuiltIndex ? " just-built" : ""}`;
       const object = document.createElement("span");
       object.className = "facility-object";
-      object.textContent = district.icon;
+      const facilityLevel = index < state.built ? Math.max(1, state.facilityLevels[index]) : 0;
+      const visualTier = Math.min(3, facilityLevel);
+      const upgradeMark = facilityLevel >= 4 ? ["✦", "◆", "♛"][(facilityLevel - 4) % 3] : "";
+      object.textContent = visualTier ? (upgradeMark || (visualTier === 3 ? "♛" : visualTier === 2 ? "✦" : "")) : "◇";
+      node.dataset.tier = String(visualTier);
+      node.dataset.rank = facilityLevel >= 4 ? "master" : visualTier === 3 ? "royal" : visualTier === 2 ? "gilded" : visualTier === 1 ? "restored" : "locked";
       const label = document.createElement("small");
       label.className = "facility-name";
       label.textContent = district.name;
@@ -297,18 +307,25 @@
   }
 
   function patMilu() {
+    const before = state.miluPats;
     if (state.miluPats < 3) state.miluPats++;
     saveState();
     updateHome();
-    els.miluHomeBtn.classList.remove("patted");
+    els.miluHomeBtn.classList.remove("patted", "cuddle");
     void els.miluHomeBtn.offsetWidth;
-    els.miluHomeBtn.classList.add("patted");
-    const heart = document.createElement("i");
-    heart.className = "milu-heart";
-    heart.textContent = state.miluPats >= 3 ? "✦" : "♥";
-    els.miluHomeBtn.append(heart);
-    window.setTimeout(() => heart.remove(), 1200);
-    showToast(state.miluPats >= 3 ? "米露已準備好，下一關先獲得 2 格蓄力！" : "米露開心地呼嚕一聲");
+    const chargedNow = before < 3 && state.miluPats >= 3;
+    els.miluHomeBtn.classList.add(chargedNow ? "cuddle" : "patted");
+    const heartCount = chargedNow ? 6 : 1;
+    for (let i = 0; i < heartCount; i++) {
+      const heart = document.createElement("i");
+      heart.className = "milu-heart";
+      heart.textContent = chargedNow && i % 2 ? "✦" : "♥";
+      heart.style.setProperty("--heart-x", `${-32 + i * 13}px`);
+      heart.style.setProperty("--heart-delay", `${i * 80}ms`);
+      els.miluHomeBtn.append(heart);
+      window.setTimeout(() => heart.remove(), 1900);
+    }
+    showToast(chargedNow ? "蓄力成功！娜娜變大撒嬌，下一關先獲得 2 格蓄力" : state.miluPats >= 3 ? "娜娜已經蓄力完成，準備陪你冒險" : "娜娜開心地呼嚕一聲");
   }
 
   function resetProgress() {
@@ -382,6 +399,12 @@
     els.petMeter.classList.toggle("ready", level.pet >= 4);
     els.challengeText.textContent = level.challengeComplete ? "完成・獎勵＋2💧" : `特殊 ${level.challengeUsed} / ${level.challengeGoal}`;
     els.challengeMission.classList.toggle("complete", level.challengeComplete);
+    els.crownCharge.style.width = `${level.crownEnergy / level.crownGoal * 100}%`;
+    els.crownText.textContent = `${level.crownEnergy} / ${level.crownGoal}`;
+    els.crownMeter.classList.toggle("ready", level.crownEnergy >= level.crownGoal - 1);
+    els.wishCharge.style.width = `${level.wishEnergy / level.wishGoal * 100}%`;
+    els.wishText.textContent = `${level.wishEnergy} / ${level.wishGoal}`;
+    els.wishMeter.classList.toggle("ready", level.wishEnergy >= level.wishGoal - 1);
     els.wandCount.textContent = toolCount(level.tools.wand);
     els.roseCount.textContent = toolCount(level.tools.rose);
     els.shuffleCount.textContent = toolCount(level.tools.shuffle);
@@ -449,7 +472,7 @@
       const clear = activeTool === "rose" ? areaAround(index, 1) : new Set([index]);
       showEffect(activeTool === "rose" ? "玫瑰花雨！" : "星光魔杖！");
       playToolFx(activeTool, index);
-      await wait(activeTool === "rose" ? 780 : 680);
+      await wait(activeTool === "rose" ? 1760 : 1660);
       await clearCells(clear, new Map());
       await resolveMatches(findMatches());
       await finishAction(false);
@@ -685,6 +708,7 @@
         showEffect(`${cascade + 1} 連鎖！`);
       }
       await clearCells(clear, creations);
+      if (cascade >= 1) chargeWishChest();
       groups = findMatches();
       preferred = [];
       cascade++;
@@ -768,8 +792,11 @@
     if (!seed.size && !creations.size) return;
     const ufoTargets = new Map();
     const clear = expandPowerClear(seed, ufoTargets);
+    const creationTypes = new Map();
+    creations.forEach((_, index) => creationTypes.set(index, board[index]?.type ?? randomType()));
     creations.forEach((power, index) => playPowerFx(index, power, true));
     const powered = [...clear].filter((index) => board[index]?.power);
+    if (powered.length) previewPowerTargets(clear, powered);
     if (powered.length) {
       level.challengeUsed = Math.min(level.challengeGoal, level.challengeUsed + powered.length);
       if (!level.challengeComplete && level.challengeUsed >= level.challengeGoal) {
@@ -785,35 +812,71 @@
     const powerCount = powered.length;
     applyImpact(clear, powerCount);
     if (staggerPowers && powerCount) {
-      await wait(1320 + (powerCount - 1) * POWER_STAGGER_MS);
+      await wait(2380 + (powerCount - 1) * POWER_STAGGER_MS);
       clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
       await wait(230);
     } else {
-      if (powerCount) await wait(1320);
+      if (powerCount) await wait(2380);
       clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
       await wait(powerCount ? 220 : 210);
     }
     clear.forEach((index) => { board[index] = null; });
     creations.forEach((power, index) => {
-      const old = board[index];
-      board[index] = tile(power === "rainbow" ? 0 : (old?.type ?? randomType()), power);
+      board[index] = tile(power === "rainbow" ? 0 : creationTypes.get(index), power);
     });
     collapseBoard();
-    if (clear.size >= 9 && creations.size === 0) grantPrincessBlessing();
+    if (clear.size >= 9 && creations.size === 0) chargeCrownBlessing();
     renderBoard();
     updateHud();
     await wait(190);
   }
 
-  function grantPrincessBlessing() {
+  function previewPowerTargets(clear, powered) {
+    const powers = powered.map((index) => board[index]?.power).filter(Boolean);
+    const theme = powers.includes("rainbow") ? "rainbow" : powers.includes("bomb") ? "bomb" : powers.includes("seal") ? "seal" : powers.includes("row") || powers.includes("col") ? "rocket" : "magic";
+    clear.forEach((index, order) => {
+      const node = els.board.children[index];
+      if (!node || node.classList.contains("blocked")) return;
+      node.classList.add("magic-target", `target-${theme}`);
+      node.style.setProperty("--target-delay", `${Math.min(order, 18) * 22}ms`);
+    });
+  }
+
+  function chargeCrownBlessing() {
+    level.crownEnergy++;
+    if (level.crownEnergy >= level.crownGoal) {
+      level.crownEnergy = 0;
+      grantPrincessBlessing("rainbow");
+      showEffect("星冠祝福完成！彩虹王冠降臨");
+    } else {
+      grantPrincessBlessing();
+      showEffect(`星冠蓄力 ${level.crownEnergy} / ${level.crownGoal}・贈送特殊圖案`);
+    }
+  }
+
+  function chargeWishChest() {
+    level.wishEnergy++;
+    if (level.wishEnergy < level.wishGoal) {
+      updateHud();
+      showEffect(`連鎖星願 ${level.wishEnergy} / ${level.wishGoal}`);
+      return;
+    }
+    level.wishEnergy = 0;
+    level.moves += 2;
+    grantPrincessBlessing();
+    updateHud();
+    showEffect("星願寶箱開啟！＋2 步與特殊圖案");
+    playWishChestFx();
+  }
+
+  function grantPrincessBlessing(forcePower = null) {
     const candidates = [];
     board.forEach((item, index) => { if (item && !item.blocked && !item.power) candidates.push(index); });
     if (!candidates.length) return;
     const index = candidates[Math.floor(Math.random() * candidates.length)];
     const powers = ["row", "col", "bomb", "seal"];
-    const power = powers[Math.floor(Math.random() * powers.length)];
+    const power = forcePower || powers[Math.floor(Math.random() * powers.length)];
     board[index] = tile(board[index].type, power);
-    showEffect("公主祝福！贈送特殊圖案");
   }
 
   function applyImpact(clear, powerCount) {
@@ -860,10 +923,10 @@
     if (level.pet >= 5) {
       level.pet = 0;
       updateHud();
-      showEffect("米露施放星光爪！");
+      showEffect("娜娜施放星光抓擊！");
       const target = choosePetTarget();
       playPetFx(target);
-      await wait(980);
+      await wait(2050);
       const clear = areaAround(target, 1);
       await clearCells(clear, new Map());
       await resolveMatches(findMatches());
@@ -871,6 +934,11 @@
     }
     updateHud();
     if (level.moves <= 0) return loseLevel();
+    if (!hasPossibleMove()) {
+      showEffect("沒有可移動組合，精靈自動洗牌！");
+      playToolFx("shuffle");
+      await animateBoardShuffle();
+    }
     locked = false;
   }
 
@@ -965,15 +1033,37 @@
     clearToolSelection();
     showEffect("精靈洗牌！");
     playToolFx("shuffle");
-    for (let attempt = 0; attempt < 24; attempt++) {
-      shufflePlayableBoard();
-      if (!findMatches().length) break;
-    }
-    renderBoard();
-    updateHud();
-    await wait(860);
+    await animateBoardShuffle();
     await resolveMatches(findMatches());
     await finishAction(false);
+  }
+
+  async function animateBoardShuffle() {
+    animateShuffleTiles("shuffle-out");
+    await wait(900);
+    for (let attempt = 0; attempt < 24; attempt++) {
+      shufflePlayableBoard();
+      if (!findMatches().length && hasPossibleMove()) break;
+    }
+    if (findMatches().length || !hasPossibleMove()) board = buildFreshBoard();
+    renderBoard();
+    animateShuffleTiles("shuffle-in");
+    updateHud();
+    await wait(900);
+    els.board.classList.remove("shuffle-in");
+  }
+
+  function animateShuffleTiles(phase) {
+    els.board.classList.remove("shuffle-out", "shuffle-in");
+    [...els.board.children].forEach((node, index) => {
+      if (node.classList.contains("blocked")) return;
+      const angle = index * 2.399;
+      node.style.setProperty("--sx", `${Math.cos(angle) * (28 + index % 5 * 4)}px`);
+      node.style.setProperty("--sy", `${Math.sin(angle) * (22 + index % 4 * 5)}px`);
+      node.style.setProperty("--shuffle-delay", `${(index % 10) * 16}ms`);
+    });
+    void els.board.offsetWidth;
+    els.board.classList.add(phase);
   }
 
   function shufflePlayableBoard() {
@@ -990,6 +1080,23 @@
       [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
     }
     slots.forEach((index, i) => { board[index] = pieces[i]; });
+  }
+
+  function hasPossibleMove(source = board) {
+    for (let row = 0; row < SIZE; row++) {
+      for (let col = 0; col < SIZE; col++) {
+        const index = row * SIZE + col;
+        if (!source[index] || source[index].blocked) continue;
+        for (const next of [col + 1 < SIZE ? index + 1 : -1, row + 1 < SIZE ? index + SIZE : -1]) {
+          if (next < 0 || !source[next] || source[next].blocked) continue;
+          [source[index], source[next]] = [source[next], source[index]];
+          const possible = findMatches(source).length > 0;
+          [source[index], source[next]] = [source[next], source[index]];
+          if (possible) return true;
+        }
+      }
+    }
+    return false;
   }
 
   function useHourglass() {
@@ -1070,9 +1177,14 @@
       rocket.className = "royal-rocket";
       rocket.src = "assets/royal-rocket-v1.webp";
       rocket.alt = "";
-      rocket.style.setProperty("--delay", `${i * 280}ms`);
+      rocket.style.setProperty("--delay", `${i * 410}ms`);
       rocket.style.setProperty("--lane", `${(i - .5) * 15}px`);
       volley.append(rocket);
+      const trail = document.createElement("i");
+      trail.className = "rocket-tail";
+      trail.style.setProperty("--delay", `${i * 410}ms`);
+      trail.style.setProperty("--lane", `${(i - .5) * 15}px`);
+      volley.append(trail);
     }
     for (let i = 0; i < 7; i++) {
       const smoke = document.createElement("i");
@@ -1080,6 +1192,13 @@
       smoke.style.setProperty("--delay", `${i * 90}ms`);
       smoke.style.setProperty("--drift", `${-34 + i * 11}px`);
       volley.append(smoke);
+    }
+    for (let i = 0; i < 7; i++) {
+      const wave = document.createElement("i");
+      wave.className = "rocket-wave";
+      wave.style.setProperty("--delay", `${180 + i * 225}ms`);
+      wave.style.setProperty("--wave-shift", `${-42 + i * 14}vw`);
+      volley.append(wave);
     }
     const crown = document.createElement("i");
     crown.className = "rocket-crown";
@@ -1090,7 +1209,7 @@
     window.setTimeout(() => {
       volley.remove();
       els.board.classList.remove("royal-impact");
-    }, 1750);
+    }, 2860);
   }
 
   function playPrincessBombFx(index) {
@@ -1110,23 +1229,42 @@
     bomb.alt = "";
     const wave = document.createElement("i");
     wave.className = "bomb-wave";
-    fx.append(bomb, wave);
+    const blast = document.createElement("i");
+    blast.className = "bomb-blast-core";
+    fx.append(bomb, blast, wave);
     const spark = document.createElement("i");
     spark.className = "bomb-fuse-spark";
     fx.append(spark);
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 22; i++) {
       const petal = document.createElement("b");
       petal.className = "bomb-petal";
-      petal.textContent = i % 2 ? "✦" : "🌹";
-      petal.style.setProperty("--angle", `${i * 30}deg`);
+      petal.style.setProperty("--angle", `${i * (360 / 22)}deg`);
+      petal.style.setProperty("--petal-delay", `${980 + i % 6 * 38}ms`);
       fx.append(petal);
+    }
+    for (let i = 0; i < 24; i++) {
+      const firework = document.createElement("i");
+      firework.className = "bomb-firework";
+      firework.textContent = i % 3 === 0 ? "✦" : "•";
+      firework.style.setProperty("--angle", `${i * 15}deg`);
+      firework.style.setProperty("--distance", `${72 + i % 4 * 18}px`);
+      firework.style.setProperty("--delay", `${760 + i % 5 * 42}ms`);
+      fx.append(firework);
+    }
+    for (let i = 0; i < 7; i++) {
+      const smoke = document.createElement("i");
+      smoke.className = "bomb-smoke-cloud";
+      smoke.style.setProperty("--smoke-x", `${Math.cos(i * .9) * (22 + i * 5)}px`);
+      smoke.style.setProperty("--smoke-y", `${Math.sin(i * .9) * (18 + i * 4)}px`);
+      smoke.style.setProperty("--smoke-delay", `${860 + i * 55}ms`);
+      fx.append(smoke);
     }
     shell.append(fx);
     els.board.classList.add("royal-impact");
     window.setTimeout(() => {
       fx.remove();
       els.board.classList.remove("royal-impact");
-    }, 1680);
+    }, 2860);
   }
 
   function playUfoFx(fromIndex, targetIndex) {
@@ -1143,14 +1281,23 @@
     flight.textContent = "🛸";
     flight.style.left = `${one.left - shellRect.left + one.width / 2}px`;
     flight.style.top = `${one.top - shellRect.top + one.height / 2}px`;
-    flight.style.setProperty("--dx", `${two.left - one.left + (two.width - one.width) / 2}px`);
-    flight.style.setProperty("--dy", `${two.top - one.top + (two.height - one.height) / 2}px`);
+    const dx = two.left - one.left + (two.width - one.width) / 2;
+    const dy = two.top - one.top + (two.height - one.height) / 2;
+    flight.style.setProperty("--dx", `${dx}px`);
+    flight.style.setProperty("--dy", `${dy}px`);
+    const beam = document.createElement("i");
+    beam.className = "ufo-clear-beam";
+    beam.style.left = `${one.left - shellRect.left + one.width / 2}px`;
+    beam.style.top = `${one.top - shellRect.top + one.height / 2}px`;
+    beam.style.setProperty("--beam-length", `${Math.hypot(dx, dy)}px`);
+    beam.style.setProperty("--beam-angle", `${Math.atan2(dy, dx) * 180 / Math.PI}deg`);
     target.classList.add("ufo-target");
-    shell.append(flight);
+    shell.append(beam, flight);
     window.setTimeout(() => {
+      beam.remove();
       flight.remove();
       target.classList.remove("ufo-target");
-    }, 1040);
+    }, 1940);
   }
 
   function playToolFx(name, index = null) {
@@ -1169,20 +1316,50 @@
     icon.className = "tool-cast-icon";
     icon.textContent = { wand: "🪄", rose: "🌹", shuffle: "🔄", hourglass: "⏳" }[name];
     fx.append(icon);
-    for (let i = 0; i < 8; i++) {
+    if (name === "wand") {
+      const arc = document.createElement("i");
+      arc.className = "wand-arc";
+      const star = document.createElement("i");
+      star.className = "wand-star";
+      star.textContent = "✦";
+      fx.append(arc, star);
+    }
+    const particleCount = name === "rose" ? 28 : 10;
+    for (let i = 0; i < particleCount; i++) {
       const particle = document.createElement("i");
-      particle.className = "tool-particle";
-      particle.textContent = name === "rose" ? "🌸" : "✦";
-      particle.style.setProperty("--angle", `${i * 45}deg`);
-      particle.style.setProperty("--distance", `${34 + (i % 3) * 12}px`);
+      particle.className = name === "rose" ? "rose-rain-petal" : "tool-particle";
+      particle.textContent = name === "rose" ? "" : "✦";
+      particle.style.setProperty("--angle", `${i * (360 / particleCount)}deg`);
+      particle.style.setProperty("--distance", `${name === "rose" ? 62 + (i % 4) * 16 : 42 + (i % 3) * 14}px`);
+      particle.style.setProperty("--delay", `${(i % 6) * 34}ms`);
+      particle.style.setProperty("--fall-x", `${-96 + (i % 8) * 27}px`);
+      particle.style.setProperty("--fall-y", `${66 + (i % 5) * 20}px`);
       fx.append(particle);
     }
     shell.append(fx);
-    if (name === "shuffle") els.board.classList.add("tool-shuffling");
     window.setTimeout(() => {
       fx.remove();
-      els.board.classList.remove("tool-shuffling");
-    }, 1160);
+    }, name === "rose" || name === "wand" ? 2140 : 1780);
+  }
+
+  function playWishChestFx() {
+    const shell = els.board.parentElement;
+    if (!shell) return;
+    const fx = document.createElement("div");
+    fx.className = "wish-chest-fx";
+    fx.setAttribute("aria-hidden", "true");
+    const chest = document.createElement("b");
+    chest.textContent = "🎁";
+    fx.append(chest);
+    for (let i = 0; i < 14; i++) {
+      const star = document.createElement("i");
+      star.textContent = "✦";
+      star.style.setProperty("--angle", `${i * (360 / 14)}deg`);
+      star.style.setProperty("--distance", `${54 + i % 4 * 18}px`);
+      fx.append(star);
+    }
+    shell.append(fx);
+    window.setTimeout(() => fx.remove(), 1850);
   }
 
   function playPowerComboFx(a, b, kind) {
@@ -1224,7 +1401,7 @@
       fx.remove();
       flash.remove();
       els.board.classList.remove("combo-impact");
-    }, 1450);
+    }, 1940);
   }
 
   function playPetFx(index) {
@@ -1242,7 +1419,10 @@
     avatar.className = "pet-cast-avatar";
     avatar.src = "assets/milu-russian-blue-v1.webp";
     avatar.alt = "";
-    fx.append(avatar);
+    const aura = document.createElement("i");
+    aura.className = "claw-aura";
+    fx.append(aura, avatar);
+    tileNode.classList.add("nana-target");
     for (let i = 0; i < 7; i++) {
       const paw = document.createElement("i");
       paw.className = "pet-paw";
@@ -1252,8 +1432,18 @@
       paw.style.setProperty("--delay", `${i * 45}ms`);
       fx.append(paw);
     }
+    for (let i = 0; i < 3; i++) {
+      const slash = document.createElement("i");
+      slash.className = "claw-slash";
+      slash.style.setProperty("--slash-x", `${(i - 1) * 18}px`);
+      slash.style.setProperty("--delay", `${650 + i * 110}ms`);
+      fx.append(slash);
+    }
     shell.append(fx);
-    window.setTimeout(() => fx.remove(), 1700);
+    window.setTimeout(() => {
+      fx.remove();
+      tileNode.classList.remove("nana-target");
+    }, 2480);
   }
 
   function showToast(message) {

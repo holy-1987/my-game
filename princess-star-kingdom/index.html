@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="星華公主">
-  <meta name="description" content="星華公主與俄羅斯藍貓米露的原創魔法三消王國冒險。">
+  <meta name="description" content="星華公主與俄羅斯藍貓娜娜的原創魔法三消王國冒險。">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/app-icon-192.png">
   <link rel="stylesheet" href="styles.css">
@@ -20,11 +20,16 @@
       <div class="home-shade" aria-hidden="true"></div>
 
       <header class="home-header">
-        <p class="eyebrow">PRINCESS STAR KINGDOM · V0.9</p>
+        <p class="eyebrow">PRINCESS STAR KINGDOM · V1.1</p>
         <h1><span id="princessName">星華</span>公主</h1>
         <p class="subtitle">魔法王國</p>
         <button id="renameBtn" class="text-button" type="button">更改公主名字</button>
       </header>
+
+      <section class="kingdom-scene" aria-label="王國設施實景">
+        <p><span aria-hidden="true">♛</span> 皇家設施全景</p>
+        <div id="districtPath" class="district-path" aria-label="建設項目"></div>
+      </section>
 
       <div class="home-content">
         <div class="stat-row" aria-label="遊戲進度">
@@ -39,9 +44,9 @@
               <p class="card-kicker">目前區域</p>
               <h2 id="kingdomTitle">晨曦花園</h2>
             </div>
-            <button id="miluHomeBtn" class="cat-badge milu-home" type="button" aria-label="摸摸俄羅斯藍貓米露，累積下一關蓄力">
+            <button id="miluHomeBtn" class="cat-badge milu-home" type="button" aria-label="摸摸俄羅斯藍貓娜娜，累積下一關蓄力">
               <img src="assets/milu-russian-blue-v1.webp" alt="">
-              <span><small>米露</small><em id="miluReady">點我互動</em></span>
+              <span><small>娜娜</small><em id="miluReady">點我互動</em></span>
             </button>
           </div>
 
@@ -49,8 +54,6 @@
             <span id="kingdomProgress"></span>
           </div>
           <p id="progressText" class="progress-copy">0 / 6 座王國設施已修復</p>
-
-          <div id="districtPath" class="district-path" aria-label="建設項目"></div>
 
           <button id="buildBtn" class="secondary-button" type="button">
             <span id="buildLabel">修復玫瑰拱門</span>
@@ -99,9 +102,9 @@
           <div class="boss-line"><span>淨化黑霧守衛</span><strong id="bossHpText">45 / 45</strong></div>
           <div class="boss-track"><span id="bossHpBar"></span></div>
         </div>
-        <div id="petMeter" class="pet-meter" aria-label="米露的魔法蓄力">
+        <div id="petMeter" class="pet-meter" aria-label="娜娜的魔法蓄力">
           <span class="pet-avatar" aria-hidden="true"><img src="assets/milu-russian-blue-v1.webp" alt=""></span>
-          <div><small>米露魔法</small><div class="pet-track"><span id="petCharge"></span></div></div>
+          <div><small>娜娜魔法</small><div class="pet-track"><span id="petCharge"></span></div></div>
         </div>
         <div id="challengeMission" class="challenge-chip" aria-label="皇家挑戰進度">
           <small>皇家挑戰</small><strong id="challengeText">特殊 0 / 3</strong>
@@ -109,6 +112,16 @@
       </section>
 
       <div class="board-shell">
+        <div class="magic-meters">
+          <div id="crownMeter" class="crown-meter" aria-label="星冠祝福蓄力">
+            <span aria-hidden="true">♛</span><small>星冠祝福</small>
+            <div><i id="crownCharge"></i></div><strong id="crownText">0 / 3</strong>
+          </div>
+          <div id="wishMeter" class="wish-meter" aria-label="星願寶箱蓄力">
+            <span aria-hidden="true">◆</span><small>星願寶箱</small>
+            <div><i id="wishCharge"></i></div><strong id="wishText">0 / 4</strong>
+          </div>
+        </div>
         <div id="effectBanner" class="effect-banner" aria-live="polite"></div>
         <div id="gameBoard" class="game-board" role="grid" aria-label="10 乘 10 魔法寶石棋盤"></div>
       </div>
