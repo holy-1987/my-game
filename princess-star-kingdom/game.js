@@ -4,6 +4,7 @@
   const SIZE = 10;
   const SAVE_KEY = "princess-star-kingdom-v1";
   const UNLIMITED_TOOLS = true;
+  const POWER_STAGGER_MS = 360;
   const POWER_LABEL = {
     row: "皇家橫向火箭：轟擊整個橫排",
     col: "皇家直向火箭：轟擊整個直排",
@@ -23,15 +24,15 @@
   const DISTRICTS = [
     { name: "玫瑰拱門", icon: "🌹", cost: 3 },
     { name: "水晶噴泉", icon: "⛲", cost: 5 },
-    { name: "白貓小屋", icon: "🏠", cost: 7 },
+    { name: "米露小屋", icon: "🏠", cost: 7 },
     { name: "星光花圃", icon: "🌷", cost: 9 },
     { name: "皇家茶亭", icon: "🫖", cost: 11 },
     { name: "晨曦宮殿", icon: "🏰", cost: 14 }
   ];
   const EVENTS = [
-    { name: "玫瑰星雨", copy: "收集皇冠紅寶石，獎勵魔法露 ×2", targetType: 1, moves: 22, target: 30 },
-    { name: "月光寶藏", copy: "收集紫月水晶，召喚米露加速蓄力", targetType: 4, moves: 24, target: 32 },
-    { name: "太陽慶典", copy: "收集皇家太陽石，大消除更容易獲得祝福", targetType: 2, moves: 20, target: 28 }
+    { name: "玫瑰星雨", copy: "收集皇冠紅寶石，獎勵魔法露 ×2", targetType: 1, moves: 22, target: 30, left: "🌹", right: "🌠", theme: "rose" },
+    { name: "月光寶藏", copy: "收集紫月水晶，召喚米露加速蓄力", targetType: 4, moves: 24, target: 32, left: "🌙", right: "🗝️", theme: "moon" },
+    { name: "太陽慶典", copy: "收集皇家太陽石，大消除更容易獲得祝福", targetType: 2, moves: 20, target: 28, left: "☀️", right: "🎊", theme: "sun" }
   ];
 
   const $ = (id) => document.getElementById(id);
@@ -41,13 +42,16 @@
     homeStars: $("homeStars"), playLevel: $("playLevel"), gameLevel: $("gameLevel"),
     progress: $("kingdomProgress"), progressText: $("progressText"), districtPath: $("districtPath"),
     buildBtn: $("buildBtn"), buildLabel: $("buildLabel"), buildCost: $("buildCost"),
+    miluHomeBtn: $("miluHomeBtn"), miluReady: $("miluReady"), resetBtn: $("resetBtn"),
     moves: $("movesLeft"), levelKind: $("levelKind"), normalMission: $("normalMission"),
     bossMission: $("bossMission"), goalIcon: $("goalIcon"), goalLeft: $("goalLeft"),
     bossHpText: $("bossHpText"), bossHpBar: $("bossHpBar"), petMeter: $("petMeter"), petCharge: $("petCharge"),
+    challengeMission: $("challengeMission"), challengeText: $("challengeText"),
     wandBtn: $("wandBtn"), wandCount: $("wandCount"), roseBtn: $("roseBtn"),
     roseCount: $("roseCount"), shuffleBtn: $("shuffleBtn"), shuffleCount: $("shuffleCount"),
     hourglassBtn: $("hourglassBtn"), hourglassCount: $("hourglassCount"), toolHint: $("toolHint"),
     effectBanner: $("effectBanner"), eventBtn: $("eventBtn"), eventTitle: $("eventTitle"), eventCopy: $("eventCopy"),
+    eventLeft: $("eventLeft"), eventRight: $("eventRight"),
     modal: $("resultModal"), resultIcon: $("resultIcon"), resultKicker: $("resultKicker"),
     resultTitle: $("resultTitle"), resultCopy: $("resultCopy"), resultPrimary: $("resultPrimary"),
     resultSecondary: $("resultSecondary"), toast: $("toast")
@@ -63,18 +67,29 @@
   let lastBuiltIndex = null;
   let uid = 0;
 
+  function defaultState(princess = "星華") {
+    return { princess, level: 1, potions: 0, stars: 0, built: 0, eventWins: 0, facilityLevels: new Array(DISTRICTS.length).fill(0), miluPats: 0 };
+  }
+
   function loadState() {
-    const fallback = { princess: "星華", level: 1, potions: 0, stars: 0, built: 0, eventWins: 0 };
+    const fallback = defaultState();
     try {
       const parsed = JSON.parse(localStorage.getItem(SAVE_KEY));
       if (!parsed || typeof parsed !== "object") return fallback;
+      const built = Math.min(DISTRICTS.length, Math.max(0, Number(parsed.built) || 0));
+      const facilityLevels = new Array(DISTRICTS.length).fill(0).map((_, index) => {
+        const saved = Array.isArray(parsed.facilityLevels) ? Number(parsed.facilityLevels[index]) || 0 : 0;
+        return index < built ? Math.max(1, saved) : 0;
+      });
       return {
         princess: typeof parsed.princess === "string" && parsed.princess.trim() ? parsed.princess.slice(0, 6) : fallback.princess,
         level: Math.max(1, Number(parsed.level) || 1),
         potions: Math.max(0, Number(parsed.potions) || 0),
         stars: Math.max(0, Number(parsed.stars) || 0),
-        built: Math.min(DISTRICTS.length, Math.max(0, Number(parsed.built) || 0)),
-        eventWins: Math.max(0, Number(parsed.eventWins) || 0)
+        built,
+        eventWins: Math.max(0, Number(parsed.eventWins) || 0),
+        facilityLevels,
+        miluPats: Math.min(3, Math.max(0, Number(parsed.miluPats) || 0))
       };
     } catch (_) {
       return fallback;
@@ -133,6 +148,7 @@
     return {
       number, isBoss, isEvent, eventName: event?.name ?? "", targetType, target, remaining: target,
       bossMax, bossHp: bossMax, moves, pet: 0,
+      challengeGoal: 3, challengeUsed: 0, challengeComplete: false,
       patternName: pattern.name, blocked: pattern.blocked,
       tools: UNLIMITED_TOOLS
         ? { wand: Infinity, rose: Infinity, shuffle: Infinity, hourglass: Infinity }
@@ -175,13 +191,22 @@
     const event = dailyEvent();
     els.eventTitle.textContent = event.name;
     els.eventCopy.textContent = event.copy;
+    els.eventLeft.textContent = event.left;
+    els.eventRight.textContent = event.right;
+    els.eventBtn.dataset.theme = event.theme;
+    els.miluReady.textContent = state.miluPats >= 3 ? "下一關蓄力＋2" : `摸摸 ${state.miluPats} / 3`;
+    els.miluHomeBtn.classList.toggle("ready", state.miluPats >= 3);
     const pct = Math.round((state.built / DISTRICTS.length) * 100);
     els.progress.style.width = `${pct}%`;
-    els.progressText.textContent = `${state.built} / ${DISTRICTS.length} 座王國設施已修復`;
+    els.progressText.textContent = state.built < DISTRICTS.length
+      ? `${state.built} / ${DISTRICTS.length} 座王國設施已修復`
+      : "王國修復完成・魔法露可持續升級設施";
     els.districtPath.replaceChildren();
+    const upgrade = nextFacilityUpgrade();
     DISTRICTS.forEach((district, index) => {
       const node = document.createElement("div");
-      node.className = `district${index < state.built ? " done" : ""}${index === state.built ? " current" : ""}${index === lastBuiltIndex ? " just-built" : ""}`;
+      const isCurrent = index === state.built || (state.built === DISTRICTS.length && index === upgrade.index);
+      node.className = `district district-${index}${index < state.built ? " done" : ""}${isCurrent ? " current" : ""}${index === lastBuiltIndex ? " just-built" : ""}`;
       const object = document.createElement("span");
       object.className = "facility-object";
       object.textContent = district.icon;
@@ -189,8 +214,14 @@
       label.className = "facility-name";
       label.textContent = district.name;
       node.append(object, label);
+      if (index < state.built) {
+        const levelBadge = document.createElement("b");
+        levelBadge.className = "facility-level";
+        levelBadge.textContent = `Lv.${state.facilityLevels[index]}`;
+        node.append(levelBadge);
+      }
       node.title = district.name;
-      node.setAttribute("aria-label", `${district.name}${index < state.built ? "，已完成" : index === state.built ? "，等待修復" : "，尚未開放"}`);
+      node.setAttribute("aria-label", `${district.name}${index < state.built ? `，等級 ${state.facilityLevels[index]}` : index === state.built ? "，等待修復" : "，尚未開放"}`);
       els.districtPath.append(node);
     });
     const next = DISTRICTS[state.built];
@@ -199,26 +230,42 @@
       els.buildCost.textContent = next.cost;
       els.buildBtn.disabled = state.potions < next.cost;
     } else {
-      els.buildLabel.textContent = "晨曦花園修復完成";
-      els.buildCost.textContent = "✓";
-      els.buildBtn.disabled = true;
+      els.buildLabel.textContent = `升級${DISTRICTS[upgrade.index].name}至 Lv.${upgrade.nextLevel}`;
+      els.buildCost.textContent = upgrade.cost;
+      els.buildBtn.disabled = state.potions < upgrade.cost;
     }
+  }
+
+  function nextFacilityUpgrade() {
+    const levels = state.facilityLevels || new Array(DISTRICTS.length).fill(1);
+    const minLevel = Math.min(...levels.map((value) => Math.max(1, Number(value) || 1)));
+    const index = levels.findIndex((value) => Math.max(1, Number(value) || 1) === minLevel);
+    const nextLevel = minLevel + 1;
+    return { index: Math.max(0, index), nextLevel, cost: 6 + nextLevel * 3 + Math.max(0, index) };
   }
 
   function buildDistrict() {
     const next = DISTRICTS[state.built];
-    if (!next) return;
-    if (state.potions < next.cost) {
-      showToast(`還需要 ${next.cost - state.potions} 滴魔法露`);
+    const upgrade = next ? null : nextFacilityUpgrade();
+    const cost = next?.cost ?? upgrade.cost;
+    const target = next ?? DISTRICTS[upgrade.index];
+    if (state.potions < cost) {
+      showToast(`還需要 ${cost - state.potions} 滴魔法露`);
       return;
     }
-    state.potions -= next.cost;
-    lastBuiltIndex = state.built;
-    state.built++;
+    state.potions -= cost;
+    if (next) {
+      lastBuiltIndex = state.built;
+      state.facilityLevels[state.built] = 1;
+      state.built++;
+    } else {
+      lastBuiltIndex = upgrade.index;
+      state.facilityLevels[upgrade.index] = upgrade.nextLevel;
+    }
     saveState();
     updateHome();
     playBuildFx(lastBuiltIndex);
-    showToast(`${next.name}修復完成！`);
+    showToast(next ? `${target.name}修復完成！` : `${target.name}升級為 Lv.${upgrade.nextLevel}！`);
   }
 
   function playBuildFx(index) {
@@ -249,6 +296,30 @@
     updateHome();
   }
 
+  function patMilu() {
+    if (state.miluPats < 3) state.miluPats++;
+    saveState();
+    updateHome();
+    els.miluHomeBtn.classList.remove("patted");
+    void els.miluHomeBtn.offsetWidth;
+    els.miluHomeBtn.classList.add("patted");
+    const heart = document.createElement("i");
+    heart.className = "milu-heart";
+    heart.textContent = state.miluPats >= 3 ? "✦" : "♥";
+    els.miluHomeBtn.append(heart);
+    window.setTimeout(() => heart.remove(), 1200);
+    showToast(state.miluPats >= 3 ? "米露已準備好，下一關先獲得 2 格蓄力！" : "米露開心地呼嚕一聲");
+  }
+
+  function resetProgress() {
+    if (!window.confirm("重置關卡、魔法露與設施進度嗎？公主名字會保留。")) return;
+    state = defaultState(state.princess);
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    lastBuiltIndex = null;
+    updateHome();
+    showToast("測試進度已重置，可以重新修復王國");
+  }
+
   function showGame() {
     els.home.hidden = true;
     els.game.hidden = false;
@@ -268,6 +339,11 @@
 
   function startMode(isEvent) {
     level = makeLevel(state.level, isEvent);
+    if (state.miluPats >= 3) {
+      level.pet = 2;
+      state.miluPats = 0;
+      saveState();
+    }
     board = buildFreshBoard();
     selected = null;
     locked = false;
@@ -304,6 +380,8 @@
     }
     els.petCharge.style.width = `${level.pet / 5 * 100}%`;
     els.petMeter.classList.toggle("ready", level.pet >= 4);
+    els.challengeText.textContent = level.challengeComplete ? "完成・獎勵＋2💧" : `特殊 ${level.challengeUsed} / ${level.challengeGoal}`;
+    els.challengeMission.classList.toggle("complete", level.challengeComplete);
     els.wandCount.textContent = toolCount(level.tools.wand);
     els.roseCount.textContent = toolCount(level.tools.rose);
     els.shuffleCount.textContent = toolCount(level.tools.shuffle);
@@ -371,7 +449,7 @@
       const clear = activeTool === "rose" ? areaAround(index, 1) : new Set([index]);
       showEffect(activeTool === "rose" ? "玫瑰花雨！" : "星光魔杖！");
       playToolFx(activeTool, index);
-      await wait(activeTool === "rose" ? 240 : 170);
+      await wait(activeTool === "rose" ? 780 : 680);
       await clearCells(clear, new Map());
       await resolveMatches(findMatches());
       await finishAction(false);
@@ -415,7 +493,7 @@
       const combo = buildPowerCombo(a, b);
       showEffect(combo.label);
       playPowerComboFx(a, b, combo.kind);
-      await wait(220);
+      await wait(520);
       await clearCells(combo.clear, new Map(), true);
       await resolveMatches(findMatches());
       await finishAction(true);
@@ -692,21 +770,28 @@
     const clear = expandPowerClear(seed, ufoTargets);
     creations.forEach((power, index) => playPowerFx(index, power, true));
     const powered = [...clear].filter((index) => board[index]?.power);
+    if (powered.length) {
+      level.challengeUsed = Math.min(level.challengeGoal, level.challengeUsed + powered.length);
+      if (!level.challengeComplete && level.challengeUsed >= level.challengeGoal) {
+        level.challengeComplete = true;
+        showEffect("皇家挑戰完成！過關追加 2 滴魔法露");
+      }
+    }
     powered.forEach((index, order) => {
       const launch = () => playPowerFx(index, board[index]?.power, false, ufoTargets.get(index));
-      if (staggerPowers) window.setTimeout(launch, order * 190);
+      if (staggerPowers) window.setTimeout(launch, order * POWER_STAGGER_MS);
       else launch();
     });
     const powerCount = powered.length;
     applyImpact(clear, powerCount);
     if (staggerPowers && powerCount) {
-      await wait(330 + (powerCount - 1) * 190);
+      await wait(1320 + (powerCount - 1) * POWER_STAGGER_MS);
       clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
-      await wait(190);
+      await wait(230);
     } else {
-      if (powerCount) await wait(360);
+      if (powerCount) await wait(1320);
       clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
-      await wait(powerCount ? 140 : 190);
+      await wait(powerCount ? 220 : 210);
     }
     clear.forEach((index) => { board[index] = null; });
     creations.forEach((power, index) => {
@@ -717,7 +802,7 @@
     if (clear.size >= 9 && creations.size === 0) grantPrincessBlessing();
     renderBoard();
     updateHud();
-    await wait(145);
+    await wait(190);
   }
 
   function grantPrincessBlessing() {
@@ -778,7 +863,7 @@
       showEffect("米露施放星光爪！");
       const target = choosePetTarget();
       playPetFx(target);
-      await wait(360);
+      await wait(980);
       const clear = areaAround(target, 1);
       await clearCells(clear, new Map());
       await resolveMatches(findMatches());
@@ -808,7 +893,9 @@
     if (level.won) return;
     level.won = true;
     locked = true;
-    const reward = level.isEvent ? 8 : level.isBoss ? 6 : 3;
+    const baseReward = level.isEvent ? 8 : level.isBoss ? 6 : 3;
+    const challengeBonus = level.challengeComplete ? 2 : 0;
+    const reward = baseReward + challengeBonus;
     if (level.isEvent) state.eventWins++;
     else state.level++;
     state.potions += reward;
@@ -817,7 +904,8 @@
     els.resultIcon.textContent = level.isEvent ? "❀" : level.isBoss ? "♛" : "✦";
     els.resultKicker.textContent = level.isEvent ? "每日活動完成" : level.isBoss ? "黑霧已淨化" : "魔法完成";
     els.resultTitle.textContent = level.isEvent ? `${level.eventName}完成！` : level.isBoss ? `${state.princess}公主守護了王國！` : "王國更明亮了！";
-    els.resultCopy.textContent = level.isEvent ? `獲得 ${reward} 滴活動魔法露，明天還會換上新活動。` : `你獲得 ${reward} 滴魔法露，可以回到王國修復新的設施。`;
+    const bonusCopy = challengeBonus ? "（含皇家挑戰＋2）" : "";
+    els.resultCopy.textContent = level.isEvent ? `獲得 ${reward} 滴活動魔法露${bonusCopy}，明天還會換上新活動。` : `你獲得 ${reward} 滴魔法露${bonusCopy}，可以回到王國修復或升級設施。`;
     els.resultPrimary.textContent = "返回王國";
     els.resultPrimary.onclick = showHome;
     els.resultSecondary.hidden = true;
@@ -883,7 +971,7 @@
     }
     renderBoard();
     updateHud();
-    await wait(360);
+    await wait(860);
     await resolveMatches(findMatches());
     await finishAction(false);
   }
@@ -960,10 +1048,10 @@
       window.setTimeout(() => {
         flash.remove();
         els.board.classList.remove("magic-impact");
-      }, 900);
+      }, 1320);
     }
     shell.append(fx);
-    window.setTimeout(() => fx.remove(), creation ? 900 : 1250);
+    window.setTimeout(() => fx.remove(), creation ? 1180 : 1560);
   }
 
   function playRoyalRocketFx(index, power) {
@@ -977,13 +1065,21 @@
     volley.setAttribute("aria-hidden", "true");
     volley.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
     volley.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
-    for (let i = 0; i < 3; i++) {
-      const rocket = document.createElement("span");
+    for (let i = 0; i < 2; i++) {
+      const rocket = document.createElement("img");
       rocket.className = "royal-rocket";
-      rocket.textContent = "🚀";
-      rocket.style.setProperty("--delay", `${i * 95}ms`);
-      rocket.style.setProperty("--lane", `${(i - 1) * 9}px`);
+      rocket.src = "assets/royal-rocket-v1.webp";
+      rocket.alt = "";
+      rocket.style.setProperty("--delay", `${i * 280}ms`);
+      rocket.style.setProperty("--lane", `${(i - .5) * 15}px`);
       volley.append(rocket);
+    }
+    for (let i = 0; i < 7; i++) {
+      const smoke = document.createElement("i");
+      smoke.className = "rocket-smoke";
+      smoke.style.setProperty("--delay", `${i * 90}ms`);
+      smoke.style.setProperty("--drift", `${-34 + i * 11}px`);
+      volley.append(smoke);
     }
     const crown = document.createElement("i");
     crown.className = "rocket-crown";
@@ -994,7 +1090,7 @@
     window.setTimeout(() => {
       volley.remove();
       els.board.classList.remove("royal-impact");
-    }, 720);
+    }, 1750);
   }
 
   function playPrincessBombFx(index) {
@@ -1008,17 +1104,21 @@
     fx.setAttribute("aria-hidden", "true");
     fx.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
     fx.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
-    const bomb = document.createElement("span");
+    const bomb = document.createElement("img");
     bomb.className = "bomb-icon";
-    bomb.textContent = "💣";
+    bomb.src = "assets/rose-bomb-v1.webp";
+    bomb.alt = "";
     const wave = document.createElement("i");
     wave.className = "bomb-wave";
     fx.append(bomb, wave);
-    for (let i = 0; i < 10; i++) {
+    const spark = document.createElement("i");
+    spark.className = "bomb-fuse-spark";
+    fx.append(spark);
+    for (let i = 0; i < 12; i++) {
       const petal = document.createElement("b");
       petal.className = "bomb-petal";
       petal.textContent = i % 2 ? "✦" : "🌹";
-      petal.style.setProperty("--angle", `${i * 36}deg`);
+      petal.style.setProperty("--angle", `${i * 30}deg`);
       fx.append(petal);
     }
     shell.append(fx);
@@ -1026,7 +1126,7 @@
     window.setTimeout(() => {
       fx.remove();
       els.board.classList.remove("royal-impact");
-    }, 760);
+    }, 1680);
   }
 
   function playUfoFx(fromIndex, targetIndex) {
@@ -1050,7 +1150,7 @@
     window.setTimeout(() => {
       flight.remove();
       target.classList.remove("ufo-target");
-    }, 560);
+    }, 1040);
   }
 
   function playToolFx(name, index = null) {
@@ -1082,7 +1182,7 @@
     window.setTimeout(() => {
       fx.remove();
       els.board.classList.remove("tool-shuffling");
-    }, 720);
+    }, 1160);
   }
 
   function playPowerComboFx(a, b, kind) {
@@ -1138,9 +1238,10 @@
     fx.setAttribute("aria-hidden", "true");
     fx.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
     fx.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
-    const avatar = document.createElement("span");
+    const avatar = document.createElement("img");
     avatar.className = "pet-cast-avatar";
-    avatar.textContent = "🐱";
+    avatar.src = "assets/milu-russian-blue-v1.webp";
+    avatar.alt = "";
     fx.append(avatar);
     for (let i = 0; i < 7; i++) {
       const paw = document.createElement("i");
@@ -1152,7 +1253,7 @@
       fx.append(paw);
     }
     shell.append(fx);
-    window.setTimeout(() => fx.remove(), 1250);
+    window.setTimeout(() => fx.remove(), 1700);
   }
 
   function showToast(message) {
@@ -1175,6 +1276,8 @@
   $("backBtn").addEventListener("click", showHome);
   $("renameBtn").addEventListener("click", renamePrincess);
   els.buildBtn.addEventListener("click", buildDistrict);
+  els.miluHomeBtn.addEventListener("click", patMilu);
+  els.resetBtn.addEventListener("click", resetProgress);
   els.wandBtn.addEventListener("click", () => selectTargetTool("wand"));
   els.roseBtn.addEventListener("click", () => selectTargetTool("rose"));
   els.shuffleBtn.addEventListener("click", useShuffle);
