@@ -1,16 +1,17 @@
 (() => {
   "use strict";
 
-  const SIZE = 8;
+  const SIZE = 10;
   const SAVE_KEY = "princess-star-kingdom-v1";
   const UNLIMITED_TOOLS = true;
   const POWER_LABEL = {
     row: "藍晶飛翼：消除整個橫排",
     col: "金色星瀑：消除整個直排",
     bomb: "玫瑰盛放：爆破周圍九宮格",
-    rainbow: "彩虹王冠：消除全部同色寶石"
+    rainbow: "彩虹王冠：消除全部同色寶石",
+    seal: "精靈方印：隨機消除一格"
   };
-  const POWER_BADGE = { row: "↔ 橫排", col: "↕ 直排", bomb: "3×3", rainbow: "同色" };
+  const POWER_BADGE = { row: "↔", col: "↕", bomb: "3×3", rainbow: "同色", seal: "隨機" };
   const TILES = [
     { symbol: "✦", name: "藍晶王星", color: "blue" },
     { symbol: "♥", name: "皇冠紅寶石", color: "rose" },
@@ -112,7 +113,8 @@
           tries++;
         } while (tries < 20 && (
           (c >= 2 && fresh[r * SIZE + c - 1]?.type === type && fresh[r * SIZE + c - 2]?.type === type) ||
-          (r >= 2 && fresh[(r - 1) * SIZE + c]?.type === type && fresh[(r - 2) * SIZE + c]?.type === type)
+          (r >= 2 && fresh[(r - 1) * SIZE + c]?.type === type && fresh[(r - 2) * SIZE + c]?.type === type) ||
+          (r >= 1 && c >= 1 && fresh[r * SIZE + c - 1]?.type === type && fresh[(r - 1) * SIZE + c]?.type === type && fresh[(r - 1) * SIZE + c - 1]?.type === type)
         ));
         fresh[r * SIZE + c] = tile(type);
       }
@@ -392,6 +394,16 @@
         }
       }
     }
+    for (let r = 0; r < SIZE - 1; r++) {
+      for (let c = 0; c < SIZE - 1; c++) {
+        const start = r * SIZE + c;
+        const cells = [start, start + 1, start + SIZE, start + SIZE + 1];
+        const type = source[start]?.type;
+        if (type !== undefined && cells.every((index) => source[index]?.type === type && source[index]?.power !== "rainbow")) {
+          groups.push({ axis: "box", cells });
+        }
+      }
+    }
     return groups;
   }
 
@@ -403,8 +415,13 @@
       groups.forEach((group) => group.cells.forEach((i) => clear.add(i)));
       const creations = choosePowerCreations(groups, preferred);
       creations.forEach((_, index) => clear.delete(index));
-      if (creations.size) {
-        const strongest = [...creations.values()].includes("rainbow") ? "彩虹星球！" : [...creations.values()].includes("bomb") ? "玫瑰爆破！" : "星光飛箭！";
+      if (cascade === 2) {
+        level.moves++;
+        updateHud();
+        showEffect("3 連鎖！獎勵 ＋1 步");
+      } else if (creations.size) {
+        const powers = [...creations.values()];
+        const strongest = powers.includes("rainbow") ? "彩虹王冠誕生！" : powers.includes("bomb") ? "玫瑰爆破誕生！" : powers.includes("seal") ? "精靈方印誕生！" : "星光飛箭誕生！";
         showEffect(strongest);
       } else if (cascade >= 1) {
         showEffect(`${cascade + 1} 連鎖！`);
@@ -426,8 +443,15 @@
         if (cross !== undefined) creations.set(cross, "bomb");
       });
     });
+    const claimedBoxes = new Set();
+    groups.filter((group) => group.axis === "box").forEach((group) => {
+      if (group.cells.some((index) => claimedBoxes.has(index))) return;
+      const chosen = preferred.find((index) => group.cells.includes(index)) ?? group.cells[0];
+      group.cells.forEach((index) => claimedBoxes.add(index));
+      if (!creations.has(chosen)) creations.set(chosen, "seal");
+    });
     groups.forEach((group) => {
-      if (group.cells.length < 4) return;
+      if (group.axis === "box" || group.cells.length < 4) return;
       const chosen = preferred.find((i) => group.cells.includes(i)) ?? group.cells[Math.floor(group.cells.length / 2)];
       if (creations.get(chosen) === "bomb") return;
       creations.set(chosen, group.cells.length >= 5 ? "rainbow" : group.axis === "h" ? "row" : "col");
@@ -467,6 +491,12 @@
         board.forEach((candidate) => { if (candidate && candidate.type >= 0) counts[candidate.type]++; });
         const common = counts.indexOf(Math.max(...counts));
         board.forEach((candidate, i) => { if (candidate?.type === common) add(i); });
+      } else if (item.power === "seal") {
+        const candidates = [];
+        board.forEach((candidate, i) => {
+          if (candidate && i !== index && !clear.has(i)) candidates.push(i);
+        });
+        if (candidates.length) add(candidates[Math.floor(Math.random() * candidates.length)]);
       }
     }
     return clear;
@@ -476,19 +506,36 @@
     if (!seed.size && !creations.size) return;
     const clear = expandPowerClear(seed);
     let powerCount = 0;
-    clear.forEach((index) => { if (board[index]?.power) powerCount++; });
+    clear.forEach((index) => {
+      if (board[index]?.power) {
+        powerCount++;
+        playPowerFx(index, board[index].power);
+      }
+    });
     applyImpact(clear, powerCount);
     clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
-    await wait(190);
+    await wait(powerCount ? 420 : 190);
     clear.forEach((index) => { board[index] = null; });
     creations.forEach((power, index) => {
       const old = board[index];
       board[index] = tile(power === "rainbow" ? 0 : (old?.type ?? randomType()), power);
     });
     collapseBoard();
+    if (clear.size >= 9 && creations.size === 0) grantPrincessBlessing();
     renderBoard();
     updateHud();
     await wait(145);
+  }
+
+  function grantPrincessBlessing() {
+    const candidates = [];
+    board.forEach((item, index) => { if (item && !item.power) candidates.push(index); });
+    if (!candidates.length) return;
+    const index = candidates[Math.floor(Math.random() * candidates.length)];
+    const powers = ["row", "col", "bomb", "seal"];
+    const power = powers[Math.floor(Math.random() * powers.length)];
+    board[index] = tile(board[index].type, power);
+    showEffect("公主祝福！贈送特殊圖案");
   }
 
   function applyImpact(clear, powerCount) {
@@ -593,7 +640,7 @@
     const button = name === "wand" ? els.wandBtn : els.roseBtn;
     button.classList.toggle("active", toolMode === name);
     button.setAttribute("aria-pressed", String(toolMode === name));
-    els.toolHint.textContent = toolMode === "rose" ? "點選棋盤位置，消除周圍九宮格" : toolMode === "wand" ? "點選一顆想直接消除的寶石" : "連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色消除";
+    els.toolHint.textContent = toolMode === "rose" ? "點選棋盤位置，消除周圍九宮格" : toolMode === "wand" ? "點選一顆想直接消除的寶石" : "連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色・田字隨機";
     renderBoard();
   }
 
@@ -603,7 +650,7 @@
       button.classList.remove("active");
       button.setAttribute("aria-pressed", "false");
     });
-    els.toolHint.textContent = "連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色消除";
+    els.toolHint.textContent = "連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色・田字隨機";
   }
 
   function areaAround(index, radius) {
@@ -650,6 +697,34 @@
     els.effectBanner.classList.remove("show");
     void els.effectBanner.offsetWidth;
     els.effectBanner.classList.add("show");
+  }
+
+  function playPowerFx(index, power) {
+    const tileNode = els.board.children[index];
+    const shell = els.board.parentElement;
+    if (!tileNode || !shell) return;
+    const tileRect = tileNode.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    const fx = document.createElement("div");
+    fx.className = `power-burst fx-${power}`;
+    fx.setAttribute("aria-hidden", "true");
+    fx.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
+    fx.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
+    const beam = document.createElement("i");
+    beam.className = "power-beam";
+    const core = document.createElement("i");
+    core.className = "power-core";
+    fx.append(beam, core);
+    for (let i = 0; i < 16; i++) {
+      const spark = document.createElement("span");
+      spark.className = "magic-spark";
+      spark.style.setProperty("--angle", `${i * 22.5}deg`);
+      spark.style.setProperty("--distance", `${42 + (i % 4) * 13}px`);
+      spark.style.setProperty("--delay", `${(i % 5) * 18}ms`);
+      fx.append(spark);
+    }
+    shell.append(fx);
+    window.setTimeout(() => fx.remove(), 1000);
   }
 
   function showToast(message) {
