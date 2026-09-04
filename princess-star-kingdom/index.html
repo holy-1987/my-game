@@ -20,7 +20,7 @@
       <div class="home-shade" aria-hidden="true"></div>
 
       <header class="home-header">
-        <p class="eyebrow">PRINCESS STAR KINGDOM</p>
+        <p class="eyebrow">PRINCESS STAR KINGDOM · V0.7</p>
         <h1><span id="princessName">星華</span>公主</h1>
         <p class="subtitle">魔法王國</p>
         <button id="renameBtn" class="text-button" type="button">更改公主名字</button>
@@ -58,6 +58,16 @@
           </button>
         </section>
 
+        <button id="eventBtn" class="event-button" type="button">
+          <span class="event-sigil" aria-hidden="true">✦</span>
+          <span class="event-info">
+            <small>每日活動</small>
+            <strong id="eventTitle">玫瑰星雨</strong>
+            <em id="eventCopy">收集皇冠紅寶石，獎勵魔法露 ×2</em>
+          </span>
+          <span class="event-reward" aria-hidden="true">×2</span>
+        </button>
+
         <button id="playBtn" class="play-button" type="button">
           <span class="play-crown" aria-hidden="true">♛</span>
           <span><small>開始冒險</small><strong>第 <span id="playLevel">1</span> 關</strong></span>
@@ -86,8 +96,8 @@
           <div class="boss-line"><span>淨化黑霧守衛</span><strong id="bossHpText">45 / 45</strong></div>
           <div class="boss-track"><span id="bossHpBar"></span></div>
         </div>
-        <div class="pet-meter" aria-label="米露的魔法蓄力">
-          <span aria-hidden="true">🐾</span>
+        <div id="petMeter" class="pet-meter" aria-label="米露的魔法蓄力">
+          <span class="pet-avatar" aria-hidden="true">🐱</span>
           <div><small>米露魔法</small><div class="pet-track"><span id="petCharge"></span></div></div>
         </div>
       </section>
@@ -112,7 +122,7 @@
             <span aria-hidden="true">⏳</span><strong>加步</strong><b id="hourglassCount">∞</b>
           </button>
         </div>
-        <p id="toolHint">連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色・田字隨機</p>
+        <p id="toolHint">兩個特殊圖案互換，可融合成加強魔法</p>
       </footer>
     </section>
 
