@@ -47,7 +47,7 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
 
 .screen {
   position: relative;
-  width: min(100%, 520px);
+  width: min(100%, 580px);
   min-height: 100dvh;
   margin-inline: auto;
 }
@@ -67,7 +67,7 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
 }
 
 .art-backdrop {
-  background: url("assets/princess-kingdom.webp") center 56% / cover no-repeat;
+  background: url("assets/princess-kingdom-v2.webp") center 50% / cover no-repeat;
   transform: scale(1.012);
 }
 
@@ -279,10 +279,11 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
 .save-note { margin: -1px 0 0; color: #b7d5d5; font-size: .72rem; text-align: center; }
 
 .game-screen {
-  padding: calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px);
+  padding: calc(env(safe-area-inset-top) + 8px) 4px calc(env(safe-area-inset-bottom) + 8px);
   background:
-    radial-gradient(circle at 50% 0%, rgba(40, 146, 155, .68), transparent 38%),
-    linear-gradient(180deg, #0c5360, #052b36 72%);
+    radial-gradient(circle at 50% 3%, rgba(72, 169, 202, .38), transparent 33%),
+    linear-gradient(180deg, rgba(3, 28, 48, .34), rgba(2, 25, 39, .88) 54%, rgba(2, 20, 31, .97)),
+    url("assets/princess-kingdom-v2.webp") center 43% / cover no-repeat;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
@@ -316,13 +317,13 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
 .mission-chip small, .mission-chip strong { display: block; }
 .mission-chip small { color: var(--muted); font-size: .68rem; }
 .mission-chip strong { font-size: 1.25rem; }
-.mini-gem { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; color: white; text-shadow: 0 2px rgba(0,0,0,.3); box-shadow: inset 0 2px rgba(255,255,255,.45), inset 0 -3px rgba(0,0,0,.16); }
-.mini-gem.blue { background: linear-gradient(145deg, #60d6ff, #1471d1); }
-.mini-gem.rose { background: linear-gradient(145deg, #ff99b5, #d8396b); }
-.mini-gem.gold { background: linear-gradient(145deg, #ffe687, #dc9f20); }
-.mini-gem.green { background: linear-gradient(145deg, #7fe5ae, #1b9f74); }
-.mini-gem.violet { background: linear-gradient(145deg, #c69cff, #774ac8); }
-.mini-gem.coral { background: linear-gradient(145deg, #ffad81, #e25236); }
+.mini-gem { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: transparent; background-position: center; background-repeat: no-repeat; background-size: 94% 94%, 100% 100%; box-shadow: inset 0 2px rgba(255,255,255,.45), inset 0 -3px rgba(0,0,0,.16), 0 3px 7px rgba(0,0,0,.25); }
+.mini-gem.blue { background-image: url("assets/gem-sapphire.webp"), linear-gradient(145deg, #60d6ff, #1471d1); }
+.mini-gem.rose { background-image: url("assets/gem-ruby.webp"), linear-gradient(145deg, #ff99b5, #d8396b); }
+.mini-gem.gold { background-image: url("assets/gem-sun.webp"), linear-gradient(145deg, #ffe687, #dc9f20); }
+.mini-gem.green { background-image: url("assets/gem-emerald.webp"), linear-gradient(145deg, #7fe5ae, #1b9f74); }
+.mini-gem.violet { background-image: url("assets/gem-moon.webp"), linear-gradient(145deg, #c69cff, #774ac8); }
+.mini-gem.pearl { background-image: url("assets/gem-pearl-rose.webp"), linear-gradient(145deg, #fffdf7, #d9b8c9); }
 
 .boss-mission { flex: 1; min-width: 0; }
 .boss-line { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: .74rem; font-weight: 850; }
@@ -341,14 +342,14 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
 .game-board {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  gap: clamp(3px, .9vw, 5px);
-  width: min(100%, 475px);
+  gap: clamp(2px, .55vw, 4px);
+  width: min(100%, 560px);
   margin-inline: auto;
-  padding: clamp(6px, 1.5vw, 9px);
+  padding: clamp(4px, 1vw, 7px);
   border: 2px solid rgba(255, 232, 169, .33);
-  border-radius: 22px;
-  background: rgba(2, 25, 34, .66);
-  box-shadow: inset 0 2px 9px rgba(0,0,0,.35), 0 18px 36px rgba(0, 15, 20, .27);
+  border-radius: 20px;
+  background: linear-gradient(155deg, rgba(8, 52, 71, .9), rgba(2, 24, 39, .87));
+  box-shadow: inset 0 2px 11px rgba(0,0,0,.48), 0 18px 40px rgba(0, 10, 20, .46), 0 0 0 3px rgba(255, 218, 129, .08);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -361,27 +362,30 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
   min-width: 0;
   padding: 0;
   border: 0;
-  border-radius: clamp(9px, 2.7vw, 14px);
+  border-radius: clamp(8px, 2.3vw, 13px);
   color: #fff;
   font-family: Georgia, serif;
   font-size: clamp(1.15rem, 6vw, 2.05rem);
   font-weight: 900;
   text-shadow: 0 2px 2px rgba(0,0,0,.3);
-  box-shadow: inset 0 3px rgba(255,255,255,.42), inset 0 -4px rgba(0,0,0,.15), 0 3px 5px rgba(0,0,0,.24);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 94% 94%, 100% 100%;
+  box-shadow: inset 0 2px rgba(255,255,255,.35), inset 0 -3px rgba(0,0,0,.18), 0 2px 4px rgba(0,0,0,.34);
   transition: transform .13s ease, filter .13s ease, opacity .17s ease;
 }
 
-.tile::before { content: ""; position: absolute; inset: 10% 15% auto; height: 17%; border-radius: 99px; background: rgba(255,255,255,.29); }
-.tile[data-type="0"] { background: linear-gradient(145deg, #62d5ff, #1270d0); }
-.tile[data-type="1"] { background: linear-gradient(145deg, #ff9db8, #d53669); }
-.tile[data-type="2"] { background: linear-gradient(145deg, #ffe58c, #d99a1b); color: #fffdf2; }
-.tile[data-type="3"] { background: linear-gradient(145deg, #76e4ac, #17966c); }
-.tile[data-type="4"] { background: linear-gradient(145deg, #cba2ff, #7444c4); }
-.tile[data-type="5"] { background: linear-gradient(145deg, #ffaf83, #df4b31); }
+.tile::before { content: ""; position: absolute; inset: 6%; border: 1px solid rgba(255,255,255,.18); border-radius: inherit; pointer-events: none; }
+.tile[data-type="0"] { background-image: url("assets/gem-sapphire.webp"), radial-gradient(circle at 45% 35%, #53c9ff, #0a4da7 72%); }
+.tile[data-type="1"] { background-image: url("assets/gem-ruby.webp"), radial-gradient(circle at 45% 35%, #ff7f9b, #9e183e 72%); }
+.tile[data-type="2"] { background-image: url("assets/gem-sun.webp"), radial-gradient(circle at 45% 35%, #ffe990, #bd7415 72%); }
+.tile[data-type="3"] { background-image: url("assets/gem-emerald.webp"), radial-gradient(circle at 45% 35%, #6aefab, #08704e 72%); }
+.tile[data-type="4"] { background-image: url("assets/gem-moon.webp"), radial-gradient(circle at 45% 35%, #c995ff, #54249c 72%); }
+.tile[data-type="5"] { background-image: url("assets/gem-pearl-rose.webp"), radial-gradient(circle at 45% 35%, #fff8ee, #b785a4 72%); }
 .tile.selected { transform: scale(.88); filter: brightness(1.25); outline: 3px solid #fff; outline-offset: 1px; }
 .tile.clearing { transform: scale(.16) rotate(12deg); opacity: 0; filter: brightness(1.8); }
 .tile.invalid { animation: shake .28s ease; }
-.tile.power::after { position: absolute; right: 2px; bottom: 0; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #fff8d7; color: #714413; font-size: .7rem; text-shadow: none; box-shadow: 0 2px 4px rgba(0,0,0,.3); }
+.tile.power::after { content: attr(data-effect); position: absolute; left: 2px; right: 2px; bottom: 2px; display: grid; place-items: center; min-height: 16px; padding: 1px 2px; border: 1px solid rgba(255,239,176,.75); border-radius: 6px; background: rgba(2, 24, 39, .9); color: #fff0a9; font-size: clamp(.5rem, 1.65vw, .65rem); font-weight: 900; line-height: 1; letter-spacing: -.02em; text-shadow: 0 1px #000; box-shadow: 0 2px 5px rgba(0,0,0,.35); }
 .tile.power {
   background-position: center;
   background-repeat: no-repeat;
@@ -389,7 +393,7 @@ button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .55; }
   color: transparent;
   overflow: visible;
 }
-.tile.power::before, .tile.power::after { display: none; }
+.tile.power::before { display: none; }
 .tile.power-row { background-image: url("assets/power-row.webp"), linear-gradient(145deg, #62d5ff, #1270d0); }
 .tile.power-col { background-image: url("assets/power-col.webp"), linear-gradient(145deg, #ffe58c, #d99a1b); }
 .tile.power-bomb { background-image: url("assets/power-bomb.webp"), linear-gradient(145deg, #ff9db8, #d53669); }

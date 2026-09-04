@@ -3,14 +3,21 @@
 
   const SIZE = 8;
   const SAVE_KEY = "princess-star-kingdom-v1";
-  const POWER_LABEL = { row: "藍晶飛翼", col: "金色星瀑", bomb: "玫瑰盛放", rainbow: "彩虹王冠" };
+  const UNLIMITED_TOOLS = true;
+  const POWER_LABEL = {
+    row: "藍晶飛翼：消除整個橫排",
+    col: "金色星瀑：消除整個直排",
+    bomb: "玫瑰盛放：爆破周圍九宮格",
+    rainbow: "彩虹王冠：消除全部同色寶石"
+  };
+  const POWER_BADGE = { row: "↔ 橫排", col: "↕ 直排", bomb: "3×3", rainbow: "同色" };
   const TILES = [
-    { symbol: "◆", name: "藍寶石", color: "blue" },
-    { symbol: "♥", name: "玫瑰心", color: "rose" },
-    { symbol: "♛", name: "金皇冠", color: "gold" },
-    { symbol: "●", name: "翡翠珠", color: "green" },
-    { symbol: "✦", name: "紫星晶", color: "violet" },
-    { symbol: "❀", name: "珊瑚花", color: "coral" }
+    { symbol: "✦", name: "藍晶王星", color: "blue" },
+    { symbol: "♥", name: "皇冠紅寶石", color: "rose" },
+    { symbol: "☀", name: "皇家太陽石", color: "gold" },
+    { symbol: "❧", name: "翡翠魔法葉", color: "green" },
+    { symbol: "☾", name: "紫月水晶", color: "violet" },
+    { symbol: "❀", name: "珍珠玫瑰", color: "pearl" }
   ];
   const DISTRICTS = [
     { name: "玫瑰拱門", icon: "❀", cost: 3 },
@@ -87,7 +94,10 @@
     return {
       number, isBoss, targetType, target, remaining: target,
       bossMax, bossHp: bossMax, moves, pet: 0,
-      tools: { wand: 2, rose: 1, shuffle: 1, hourglass: 1 }, won: false
+      tools: UNLIMITED_TOOLS
+        ? { wand: Infinity, rose: Infinity, shuffle: Infinity, hourglass: Infinity }
+        : { wand: 5, rose: 3, shuffle: 3, hourglass: 3 },
+      won: false
     };
   }
 
@@ -210,30 +220,41 @@
       els.goalLeft.textContent = Math.max(0, level.remaining);
     }
     els.petCharge.style.width = `${level.pet / 5 * 100}%`;
-    els.wandCount.textContent = level.tools.wand;
-    els.roseCount.textContent = level.tools.rose;
-    els.shuffleCount.textContent = level.tools.shuffle;
-    els.hourglassCount.textContent = level.tools.hourglass;
+    els.wandCount.textContent = toolCount(level.tools.wand);
+    els.roseCount.textContent = toolCount(level.tools.rose);
+    els.shuffleCount.textContent = toolCount(level.tools.shuffle);
+    els.hourglassCount.textContent = toolCount(level.tools.hourglass);
     els.wandBtn.disabled = level.tools.wand <= 0;
     els.roseBtn.disabled = level.tools.rose <= 0;
     els.shuffleBtn.disabled = level.tools.shuffle <= 0;
     els.hourglassBtn.disabled = level.tools.hourglass <= 0;
   }
 
+  function toolCount(value) {
+    return Number.isFinite(value) ? value : "∞";
+  }
+
+  function spendTool(name) {
+    if (Number.isFinite(level.tools[name])) level.tools[name]--;
+  }
+
   function renderBoard() {
     const fragment = document.createDocumentFragment();
     board.forEach((item, index) => {
       const button = document.createElement("button");
-      const info = item.power === "rainbow" ? { symbol: "✦", name: "彩虹星球" } : TILES[item.type];
+      const info = item.power === "rainbow" ? { symbol: "✦", name: "彩虹王冠" } : TILES[item.type];
       button.type = "button";
       button.className = "tile";
       button.dataset.index = index;
       button.dataset.type = item.type;
       button.setAttribute("role", "gridcell");
       button.setAttribute("aria-label", `${info.name}${item.power ? `，${POWER_LABEL[item.power]}` : ""}`);
-      button.textContent = item.power ? "" : info.symbol;
+      button.textContent = "";
       if (selected === index) button.classList.add("selected");
-      if (item.power) button.classList.add("power", `power-${item.power}`);
+      if (item.power) {
+        button.classList.add("power", `power-${item.power}`);
+        button.dataset.effect = POWER_BADGE[item.power];
+      }
       fragment.append(button);
     });
     els.board.replaceChildren(fragment);
@@ -250,7 +271,7 @@
     if (toolMode && (toolMode === "wand" || toolMode === "rose")) {
       locked = true;
       const activeTool = toolMode;
-      level.tools[activeTool]--;
+      spendTool(activeTool);
       clearToolSelection();
       const clear = activeTool === "rose" ? areaAround(index, 1) : new Set([index]);
       showEffect(activeTool === "rose" ? "玫瑰花雨！" : "星光魔杖！");
@@ -572,7 +593,7 @@
     const button = name === "wand" ? els.wandBtn : els.roseBtn;
     button.classList.toggle("active", toolMode === name);
     button.setAttribute("aria-pressed", String(toolMode === name));
-    els.toolHint.textContent = toolMode === "rose" ? "點選棋盤位置，消除周圍九宮格" : toolMode === "wand" ? "點選一顆想直接消除的寶石" : "交換相鄰寶石；四顆以上可召喚專屬魔法道具";
+    els.toolHint.textContent = toolMode === "rose" ? "點選棋盤位置，消除周圍九宮格" : toolMode === "wand" ? "點選一顆想直接消除的寶石" : "連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色消除";
     renderBoard();
   }
 
@@ -582,7 +603,7 @@
       button.classList.remove("active");
       button.setAttribute("aria-pressed", "false");
     });
-    els.toolHint.textContent = "交換相鄰寶石；四顆以上可召喚專屬魔法道具";
+    els.toolHint.textContent = "連鎖效果：↔ 橫排・↕ 直排・3×3 爆破・同色消除";
   }
 
   function areaAround(index, radius) {
@@ -598,7 +619,7 @@
   async function useShuffle() {
     if (locked || !level || level.tools.shuffle <= 0) return;
     locked = true;
-    level.tools.shuffle--;
+    spendTool("shuffle");
     clearToolSelection();
     showEffect("精靈洗牌！");
     for (let attempt = 0; attempt < 24; attempt++) {
@@ -617,7 +638,7 @@
 
   function useHourglass() {
     if (locked || !level || level.tools.hourglass <= 0) return;
-    level.tools.hourglass--;
+    spendTool("hourglass");
     level.moves += 5;
     clearToolSelection();
     updateHud();

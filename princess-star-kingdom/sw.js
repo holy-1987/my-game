@@ -1,17 +1,23 @@
-const CACHE = "princess-star-kingdom-v3";
+const CACHE = "princess-star-kingdom-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./game.js",
   "./manifest.webmanifest",
-  "./assets/princess-kingdom.webp",
+  "./assets/princess-kingdom-v2.webp",
   "./assets/app-icon-512.webp",
   "./assets/app-icon-192.png",
   "./assets/power-row.webp",
   "./assets/power-col.webp",
   "./assets/power-bomb.webp",
-  "./assets/power-rainbow.webp"
+  "./assets/power-rainbow.webp",
+  "./assets/gem-ruby.webp",
+  "./assets/gem-sapphire.webp",
+  "./assets/gem-emerald.webp",
+  "./assets/gem-moon.webp",
+  "./assets/gem-sun.webp",
+  "./assets/gem-pearl-rose.webp"
 ];
 
 self.addEventListener("install", (event) => {
