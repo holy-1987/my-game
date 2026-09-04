@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#0a3f4a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="星華公主">
+  <meta name="description" content="星華公主與白貓米露的原創魔法三消王國冒險。">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/app-icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>星華公主：魔法王國</title>
+</head>
+<body>
+  <main id="app">
+    <section id="homeScreen" class="screen home-screen" aria-label="魔法王國">
+      <div class="art-backdrop" aria-hidden="true"></div>
+      <div class="home-shade" aria-hidden="true"></div>
+
+      <header class="home-header">
+        <p class="eyebrow">PRINCESS STAR KINGDOM</p>
+        <h1><span id="princessName">星華</span>公主</h1>
+        <p class="subtitle">魔法王國</p>
+        <button id="renameBtn" class="text-button" type="button">更改公主名字</button>
+      </header>
+
+      <div class="home-content">
+        <div class="stat-row" aria-label="遊戲進度">
+          <div class="stat-pill"><span>關卡</span><strong id="homeLevel">1</strong></div>
+          <div class="stat-pill potion"><span>魔法露</span><strong id="homePotions">0</strong></div>
+          <div class="stat-pill"><span>星章</span><strong id="homeStars">0</strong></div>
+        </div>
+
+        <section class="kingdom-card" aria-labelledby="kingdomTitle">
+          <div class="card-heading">
+            <div>
+              <p class="card-kicker">目前區域</p>
+              <h2 id="kingdomTitle">晨曦花園</h2>
+            </div>
+            <div class="cat-badge" aria-label="白貓米露會在關卡中協助你">
+              <span aria-hidden="true">🐱</span>
+              <small>米露</small>
+            </div>
+          </div>
+
+          <div class="progress-track" aria-label="王國修復進度">
+            <span id="kingdomProgress"></span>
+          </div>
+          <p id="progressText" class="progress-copy">0 / 6 座設施已修復</p>
+
+          <div id="districtPath" class="district-path" aria-label="建設項目"></div>
+
+          <button id="buildBtn" class="secondary-button" type="button">
+            <span id="buildLabel">修復玫瑰拱門</span>
+            <span class="cost"><span aria-hidden="true">💧</span><strong id="buildCost">3</strong></span>
+          </button>
+        </section>
+
+        <button id="playBtn" class="play-button" type="button">
+          <span class="play-crown" aria-hidden="true">♛</span>
+          <span><small>開始冒險</small><strong>第 <span id="playLevel">1</span> 關</strong></span>
+          <span class="play-arrow" aria-hidden="true">›</span>
+        </button>
+        <p class="save-note">進度會自動保存在這台裝置</p>
+      </div>
+    </section>
+
+    <section id="gameScreen" class="screen game-screen" hidden aria-label="三消關卡">
+      <header class="game-header">
+        <button id="backBtn" class="icon-button" type="button" aria-label="返回王國">‹</button>
+        <div class="level-title">
+          <small id="levelKind">花園關卡</small>
+          <strong>第 <span id="gameLevel">1</span> 關</strong>
+        </div>
+        <div class="moves-box"><small>剩餘步數</small><strong id="movesLeft">26</strong></div>
+      </header>
+
+      <section class="mission-panel" aria-label="關卡目標">
+        <div id="normalMission" class="mission-chip">
+          <span id="goalIcon" class="mini-gem blue" aria-hidden="true">◆</span>
+          <div><small>收集目標</small><strong id="goalLeft">12</strong></div>
+        </div>
+        <div id="bossMission" class="boss-mission" hidden>
+          <div class="boss-line"><span>淨化黑霧守衛</span><strong id="bossHpText">45 / 45</strong></div>
+          <div class="boss-track"><span id="bossHpBar"></span></div>
+        </div>
+        <div class="pet-meter" aria-label="米露的魔法蓄力">
+          <span aria-hidden="true">🐾</span>
+          <div><small>米露魔法</small><div class="pet-track"><span id="petCharge"></span></div></div>
+        </div>
+      </section>
+
+      <div class="board-shell">
+        <div id="effectBanner" class="effect-banner" aria-live="polite"></div>
+        <div id="gameBoard" class="game-board" role="grid" aria-label="8 乘 8 魔法寶石棋盤"></div>
+      </div>
+
+      <footer class="booster-bar">
+        <div class="booster-tools" aria-label="關卡道具">
+          <button id="wandBtn" class="booster-button" type="button" aria-pressed="false" aria-label="星光魔杖，消除一格">
+            <span aria-hidden="true">🪄</span><strong>魔杖</strong><b id="wandCount">2</b>
+          </button>
+          <button id="roseBtn" class="booster-button" type="button" aria-pressed="false" aria-label="玫瑰花雨，消除九宮格">
+            <span aria-hidden="true">🌹</span><strong>花雨</strong><b id="roseCount">1</b>
+          </button>
+          <button id="shuffleBtn" class="booster-button" type="button" aria-label="精靈洗牌，重新排列棋盤">
+            <span aria-hidden="true">🔄</span><strong>洗牌</strong><b id="shuffleCount">1</b>
+          </button>
+          <button id="hourglassBtn" class="booster-button" type="button" aria-label="時光沙漏，增加五步">
+            <span aria-hidden="true">⏳</span><strong>加步</strong><b id="hourglassCount">1</b>
+          </button>
+        </div>
+        <p id="toolHint">交換相鄰寶石；四顆以上可召喚專屬魔法道具</p>
+      </footer>
+    </section>
+
+    <div id="resultModal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+        <div id="resultIcon" class="result-icon" aria-hidden="true">✦</div>
+        <p id="resultKicker" class="card-kicker">魔法完成</p>
+        <h2 id="resultTitle">王國更明亮了！</h2>
+        <p id="resultCopy">你獲得 3 滴魔法露，可以修復新的王國設施。</p>
+        <button id="resultPrimary" class="play-button compact" type="button">返回王國</button>
+        <button id="resultSecondary" class="text-button" type="button" hidden>重新挑戰</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </main>
+  <script src="game.js" defer></script>
+</body>
+</html>
