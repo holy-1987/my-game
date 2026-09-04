@@ -5,13 +5,13 @@
   const SAVE_KEY = "princess-star-kingdom-v1";
   const UNLIMITED_TOOLS = true;
   const POWER_LABEL = {
-    row: "藍晶飛翼：消除整個橫排",
-    col: "金色星瀑：消除整個直排",
-    bomb: "玫瑰盛放：爆破周圍九宮格",
+    row: "皇家橫向火箭：轟擊整個橫排",
+    col: "皇家直向火箭：轟擊整個直排",
+    bomb: "玫瑰炸彈：爆炸周圍九宮格",
     rainbow: "彩虹王冠：消除全部同色寶石",
-    seal: "精靈方印：隨機消除一格"
+    seal: "星光飛碟：飛向隨機寶石消除"
   };
-  const POWER_BADGE = { row: "↔", col: "↕", bomb: "3×3", rainbow: "同色", seal: "隨機" };
+  const POWER_BADGE = { row: "↔火箭", col: "↕火箭", bomb: "炸彈", rainbow: "同色", seal: "飛碟" };
   const TILES = [
     { symbol: "✦", name: "藍晶王星", color: "blue" },
     { symbol: "♥", name: "皇冠紅寶石", color: "rose" },
@@ -21,12 +21,12 @@
     { symbol: "❀", name: "珍珠玫瑰", color: "pearl" }
   ];
   const DISTRICTS = [
-    { name: "玫瑰拱門", icon: "❀", cost: 3 },
-    { name: "水晶噴泉", icon: "♢", cost: 5 },
-    { name: "白貓小屋", icon: "♜", cost: 7 },
-    { name: "星光花圃", icon: "✦", cost: 9 },
-    { name: "皇家茶亭", icon: "♨", cost: 11 },
-    { name: "晨曦宮殿", icon: "♛", cost: 14 }
+    { name: "玫瑰拱門", icon: "🌹", cost: 3 },
+    { name: "水晶噴泉", icon: "⛲", cost: 5 },
+    { name: "白貓小屋", icon: "🏠", cost: 7 },
+    { name: "星光花圃", icon: "🌷", cost: 9 },
+    { name: "皇家茶亭", icon: "🫖", cost: 11 },
+    { name: "晨曦宮殿", icon: "🏰", cost: 14 }
   ];
   const EVENTS = [
     { name: "玫瑰星雨", copy: "收集皇冠紅寶石，獎勵魔法露 ×2", targetType: 1, moves: 22, target: 30 },
@@ -60,6 +60,7 @@
   let locked = false;
   let toolMode = null;
   let toastTimer = null;
+  let lastBuiltIndex = null;
   let uid = 0;
 
   function loadState() {
@@ -176,12 +177,18 @@
     els.eventCopy.textContent = event.copy;
     const pct = Math.round((state.built / DISTRICTS.length) * 100);
     els.progress.style.width = `${pct}%`;
-    els.progressText.textContent = `${state.built} / ${DISTRICTS.length} 座設施已修復`;
+    els.progressText.textContent = `${state.built} / ${DISTRICTS.length} 座王國設施已修復`;
     els.districtPath.replaceChildren();
     DISTRICTS.forEach((district, index) => {
       const node = document.createElement("div");
-      node.className = `district${index < state.built ? " done" : ""}${index === state.built ? " current" : ""}`;
-      node.textContent = district.icon;
+      node.className = `district${index < state.built ? " done" : ""}${index === state.built ? " current" : ""}${index === lastBuiltIndex ? " just-built" : ""}`;
+      const object = document.createElement("span");
+      object.className = "facility-object";
+      object.textContent = district.icon;
+      const label = document.createElement("small");
+      label.className = "facility-name";
+      label.textContent = district.name;
+      node.append(object, label);
       node.title = district.name;
       node.setAttribute("aria-label", `${district.name}${index < state.built ? "，已完成" : index === state.built ? "，等待修復" : "，尚未開放"}`);
       els.districtPath.append(node);
@@ -206,10 +213,30 @@
       return;
     }
     state.potions -= next.cost;
+    lastBuiltIndex = state.built;
     state.built++;
     saveState();
     updateHome();
+    playBuildFx(lastBuiltIndex);
     showToast(`${next.name}修復完成！`);
+  }
+
+  function playBuildFx(index) {
+    const node = els.districtPath.children[index];
+    if (!node) return;
+    for (let i = 0; i < 6; i++) {
+      const drop = document.createElement("i");
+      drop.className = "build-drop";
+      drop.textContent = i % 2 ? "✦" : "💧";
+      drop.style.setProperty("--x", `${-34 + i * 14}px`);
+      drop.style.setProperty("--delay", `${i * 70}ms`);
+      node.append(drop);
+    }
+    window.setTimeout(() => {
+      lastBuiltIndex = null;
+      node.classList.remove("just-built");
+      node.querySelectorAll(".build-drop").forEach((drop) => drop.remove());
+    }, 1450);
   }
 
   function renamePrincess() {
@@ -343,6 +370,8 @@
       clearToolSelection();
       const clear = activeTool === "rose" ? areaAround(index, 1) : new Set([index]);
       showEffect(activeTool === "rose" ? "玫瑰花雨！" : "星光魔杖！");
+      playToolFx(activeTool, index);
+      await wait(activeTool === "rose" ? 240 : 170);
       await clearCells(clear, new Map());
       await resolveMatches(findMatches());
       await finishAction(false);
@@ -387,7 +416,7 @@
       showEffect(combo.label);
       playPowerComboFx(a, b, combo.kind);
       await wait(220);
-      await clearCells(combo.clear, new Map());
+      await clearCells(combo.clear, new Map(), true);
       await resolveMatches(findMatches());
       await finishAction(true);
       return;
@@ -478,7 +507,7 @@
     }
     if (pa === "seal" || pb === "seal") {
       addRandom(pa === "seal" && pb === "seal" ? 18 : 11);
-      return { clear, kind: "fairy", label: pa === pb ? "精靈星海！十八連流星！" : "精靈共鳴！魔法流星雨！" };
+      return { clear, kind: "fairy", label: pa === pb ? "飛碟編隊！十八次空中突襲！" : "飛碟共鳴！鎖定多個目標！" };
     }
     if (pa === "bomb" && pb === "bomb") {
       addArea(a, 2);
@@ -572,7 +601,7 @@
         showEffect("3 連鎖！獎勵 ＋1 步");
       } else if (creations.size) {
         const powers = [...creations.values()];
-        const strongest = powers.includes("rainbow") ? "彩虹王冠誕生！" : powers.includes("bomb") ? "玫瑰爆破誕生！" : powers.includes("seal") ? "精靈方印誕生！" : "星光飛箭誕生！";
+        const strongest = powers.includes("rainbow") ? "彩虹王冠誕生！" : powers.includes("bomb") ? "玫瑰炸彈完成！" : powers.includes("seal") ? "星光飛碟完成！" : "皇家火箭完成！";
         showEffect(strongest);
       } else if (cascade >= 1) {
         showEffect(`${cascade + 1} 連鎖！`);
@@ -610,7 +639,7 @@
     return creations;
   }
 
-  function expandPowerClear(seed) {
+  function expandPowerClear(seed, ufoTargets = new Map()) {
     const clear = new Set([...seed].filter((index) => board[index] && !board[index].blocked));
     const queue = [...clear];
     const seen = new Set();
@@ -647,26 +676,38 @@
         board.forEach((candidate, i) => {
           if (candidate && !candidate.blocked && i !== index && !clear.has(i)) candidates.push(i);
         });
-        if (candidates.length) add(candidates[Math.floor(Math.random() * candidates.length)]);
+        if (candidates.length) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          ufoTargets.set(index, target);
+          add(target);
+        }
       }
     }
     return clear;
   }
 
-  async function clearCells(seed, creations) {
+  async function clearCells(seed, creations, staggerPowers = false) {
     if (!seed.size && !creations.size) return;
-    const clear = expandPowerClear(seed);
-    let powerCount = 0;
+    const ufoTargets = new Map();
+    const clear = expandPowerClear(seed, ufoTargets);
     creations.forEach((power, index) => playPowerFx(index, power, true));
-    clear.forEach((index) => {
-      if (board[index]?.power) {
-        powerCount++;
-        playPowerFx(index, board[index].power, false);
-      }
+    const powered = [...clear].filter((index) => board[index]?.power);
+    powered.forEach((index, order) => {
+      const launch = () => playPowerFx(index, board[index]?.power, false, ufoTargets.get(index));
+      if (staggerPowers) window.setTimeout(launch, order * 190);
+      else launch();
     });
+    const powerCount = powered.length;
     applyImpact(clear, powerCount);
-    clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
-    await wait(powerCount ? 420 : 190);
+    if (staggerPowers && powerCount) {
+      await wait(330 + (powerCount - 1) * 190);
+      clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
+      await wait(190);
+    } else {
+      if (powerCount) await wait(360);
+      clear.forEach((index) => els.board.children[index]?.classList.add("clearing"));
+      await wait(powerCount ? 140 : 190);
+    }
     clear.forEach((index) => { board[index] = null; });
     creations.forEach((power, index) => {
       const old = board[index];
@@ -805,7 +846,7 @@
     const button = name === "wand" ? els.wandBtn : els.roseBtn;
     button.classList.toggle("active", toolMode === name);
     button.setAttribute("aria-pressed", String(toolMode === name));
-    els.toolHint.textContent = toolMode === "rose" ? "點選棋盤位置，消除周圍九宮格" : toolMode === "wand" ? "點選一顆想直接消除的寶石" : "兩個特殊圖案互換，可融合成加強魔法";
+    els.toolHint.textContent = toolMode === "rose" ? "點選位置，玫瑰花瓣會落在九宮格" : toolMode === "wand" ? "點選寶石，魔杖會飛到目標消除" : "飛碟、皇家火箭與玫瑰炸彈可互換連續引爆";
     renderBoard();
   }
 
@@ -815,7 +856,7 @@
       button.classList.remove("active");
       button.setAttribute("aria-pressed", "false");
     });
-    els.toolHint.textContent = "兩個特殊圖案互換，可融合成加強魔法";
+    els.toolHint.textContent = "飛碟、皇家火箭與玫瑰炸彈可互換連續引爆";
   }
 
   function areaAround(index, radius) {
@@ -835,6 +876,7 @@
     spendTool("shuffle");
     clearToolSelection();
     showEffect("精靈洗牌！");
+    playToolFx("shuffle");
     for (let attempt = 0; attempt < 24; attempt++) {
       shufflePlayableBoard();
       if (!findMatches().length) break;
@@ -869,6 +911,7 @@
     clearToolSelection();
     updateHud();
     showEffect("時光回溯 ＋5 步！");
+    playToolFx("hourglass");
   }
 
   function showEffect(message) {
@@ -878,10 +921,13 @@
     els.effectBanner.classList.add("show");
   }
 
-  function playPowerFx(index, power, creation = false) {
+  function playPowerFx(index, power, creation = false, targetIndex = null) {
     const tileNode = els.board.children[index];
     const shell = els.board.parentElement;
     if (!tileNode || !shell) return;
+    if (!creation && (power === "row" || power === "col")) return playRoyalRocketFx(index, power);
+    if (!creation && power === "bomb") return playPrincessBombFx(index);
+    if (!creation && power === "seal" && targetIndex !== null) return playUfoFx(index, targetIndex);
     const tileRect = tileNode.getBoundingClientRect();
     const shellRect = shell.getBoundingClientRect();
     const fx = document.createElement("div");
@@ -894,7 +940,7 @@
     const core = document.createElement("i");
     core.className = "power-core";
     fx.append(beam, core);
-    const sparkCount = creation ? 14 : 24;
+    const sparkCount = creation ? 7 : 11;
     for (let i = 0; i < sparkCount; i++) {
       const spark = document.createElement("span");
       spark.className = "magic-spark";
@@ -920,6 +966,125 @@
     window.setTimeout(() => fx.remove(), creation ? 900 : 1250);
   }
 
+  function playRoyalRocketFx(index, power) {
+    const tileNode = els.board.children[index];
+    const shell = els.board.parentElement;
+    if (!tileNode || !shell) return;
+    const tileRect = tileNode.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    const volley = document.createElement("div");
+    volley.className = `rocket-volley rocket-${power}`;
+    volley.setAttribute("aria-hidden", "true");
+    volley.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
+    volley.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
+    for (let i = 0; i < 3; i++) {
+      const rocket = document.createElement("span");
+      rocket.className = "royal-rocket";
+      rocket.textContent = "🚀";
+      rocket.style.setProperty("--delay", `${i * 95}ms`);
+      rocket.style.setProperty("--lane", `${(i - 1) * 9}px`);
+      volley.append(rocket);
+    }
+    const crown = document.createElement("i");
+    crown.className = "rocket-crown";
+    crown.textContent = "♛";
+    volley.append(crown);
+    shell.append(volley);
+    els.board.classList.add("royal-impact");
+    window.setTimeout(() => {
+      volley.remove();
+      els.board.classList.remove("royal-impact");
+    }, 720);
+  }
+
+  function playPrincessBombFx(index) {
+    const tileNode = els.board.children[index];
+    const shell = els.board.parentElement;
+    if (!tileNode || !shell) return;
+    const tileRect = tileNode.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    const fx = document.createElement("div");
+    fx.className = "princess-bomb-fx";
+    fx.setAttribute("aria-hidden", "true");
+    fx.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
+    fx.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
+    const bomb = document.createElement("span");
+    bomb.className = "bomb-icon";
+    bomb.textContent = "💣";
+    const wave = document.createElement("i");
+    wave.className = "bomb-wave";
+    fx.append(bomb, wave);
+    for (let i = 0; i < 10; i++) {
+      const petal = document.createElement("b");
+      petal.className = "bomb-petal";
+      petal.textContent = i % 2 ? "✦" : "🌹";
+      petal.style.setProperty("--angle", `${i * 36}deg`);
+      fx.append(petal);
+    }
+    shell.append(fx);
+    els.board.classList.add("royal-impact");
+    window.setTimeout(() => {
+      fx.remove();
+      els.board.classList.remove("royal-impact");
+    }, 760);
+  }
+
+  function playUfoFx(fromIndex, targetIndex) {
+    const from = els.board.children[fromIndex];
+    const target = els.board.children[targetIndex];
+    const shell = els.board.parentElement;
+    if (!from || !target || !shell) return;
+    const one = from.getBoundingClientRect();
+    const two = target.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    const flight = document.createElement("div");
+    flight.className = "ufo-flight";
+    flight.setAttribute("aria-hidden", "true");
+    flight.textContent = "🛸";
+    flight.style.left = `${one.left - shellRect.left + one.width / 2}px`;
+    flight.style.top = `${one.top - shellRect.top + one.height / 2}px`;
+    flight.style.setProperty("--dx", `${two.left - one.left + (two.width - one.width) / 2}px`);
+    flight.style.setProperty("--dy", `${two.top - one.top + (two.height - one.height) / 2}px`);
+    target.classList.add("ufo-target");
+    shell.append(flight);
+    window.setTimeout(() => {
+      flight.remove();
+      target.classList.remove("ufo-target");
+    }, 560);
+  }
+
+  function playToolFx(name, index = null) {
+    const shell = els.board.parentElement;
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const target = index === null ? els.board : els.board.children[index];
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const fx = document.createElement("div");
+    fx.className = `tool-cast tool-${name}`;
+    fx.setAttribute("aria-hidden", "true");
+    fx.style.left = `${rect.left - shellRect.left + rect.width / 2}px`;
+    fx.style.top = `${rect.top - shellRect.top + rect.height / 2}px`;
+    const icon = document.createElement("span");
+    icon.className = "tool-cast-icon";
+    icon.textContent = { wand: "🪄", rose: "🌹", shuffle: "🔄", hourglass: "⏳" }[name];
+    fx.append(icon);
+    for (let i = 0; i < 8; i++) {
+      const particle = document.createElement("i");
+      particle.className = "tool-particle";
+      particle.textContent = name === "rose" ? "🌸" : "✦";
+      particle.style.setProperty("--angle", `${i * 45}deg`);
+      particle.style.setProperty("--distance", `${34 + (i % 3) * 12}px`);
+      fx.append(particle);
+    }
+    shell.append(fx);
+    if (name === "shuffle") els.board.classList.add("tool-shuffling");
+    window.setTimeout(() => {
+      fx.remove();
+      els.board.classList.remove("tool-shuffling");
+    }, 720);
+  }
+
   function playPowerComboFx(a, b, kind) {
     const first = els.board.children[a];
     const second = els.board.children[b];
@@ -937,15 +1102,15 @@
     ring.className = "combo-ring";
     const emblem = document.createElement("b");
     emblem.className = "combo-emblem";
-    emblem.textContent = kind === "fairy" ? "田" : kind === "nova" ? "❀" : "♛";
+    emblem.textContent = kind === "fairy" ? "🛸" : kind === "nova" ? "💣" : "♛";
     fx.append(ring, emblem);
-    for (let i = 0; i < 32; i++) {
+    for (let i = 0; i < 18; i++) {
       const star = document.createElement("span");
       star.className = "combo-star";
       star.textContent = i % 3 === 0 ? "✦" : "•";
-      star.style.setProperty("--angle", `${i * 11.25}deg`);
-      star.style.setProperty("--distance", `${78 + (i % 6) * 20}px`);
-      star.style.setProperty("--delay", `${(i % 8) * 24}ms`);
+      star.style.setProperty("--angle", `${i * 20}deg`);
+      star.style.setProperty("--distance", `${62 + (i % 5) * 15}px`);
+      star.style.setProperty("--delay", `${(i % 6) * 24}ms`);
       fx.append(star);
     }
     const flash = document.createElement("div");
