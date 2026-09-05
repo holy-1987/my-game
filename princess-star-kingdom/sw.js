@@ -1,4 +1,4 @@
-const CACHE = "princess-star-kingdom-v121";
+const CACHE = "princess-star-kingdom-v122";
 const ASSETS = [
   "./",
   "./index.html",
