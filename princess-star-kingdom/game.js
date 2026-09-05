@@ -1005,7 +1005,7 @@
       showEffect("娜娜施放星光抓擊！");
       const target = choosePetTarget();
       playPetFx(target);
-      await wait(3650);
+      await wait(5200);
       const clear = areaAround(target, 1);
       await clearCells(clear, new Map());
       await resolveMatches(findMatches());
@@ -1490,10 +1490,11 @@
     if (!tileNode || !shell) return;
     const tileRect = tileNode.getBoundingClientRect();
     const shellRect = shell.getBoundingClientRect();
+    const castX = tileRect.left - shellRect.left + tileRect.width / 2;
     const fx = document.createElement("div");
     fx.className = "pet-cast";
     fx.setAttribute("aria-hidden", "true");
-    fx.style.left = `${tileRect.left - shellRect.left + tileRect.width / 2}px`;
+    fx.style.left = `${castX}px`;
     fx.style.top = `${tileRect.top - shellRect.top + tileRect.height / 2}px`;
     const avatar = document.createElement("img");
     avatar.className = "pet-cast-avatar";
@@ -1505,7 +1506,8 @@
     waveAvatar.alt = "";
     const castBody = document.createElement("span");
     castBody.className = "nana-cast-body";
-    const safeEdge = Math.min(78, shellRect.width * .23);
+    const castWidth = Math.min(272, Math.max(236, shellRect.width * .62));
+    const safeEdge = Math.min(castWidth * .5 + 8, shellRect.width * .45);
     const bodyShift = castX < safeEdge ? safeEdge - castX : castX > shellRect.width - safeEdge ? shellRect.width - safeEdge - castX : 0;
     castBody.style.left = `${bodyShift}px`;
     castBody.append(avatar, waveAvatar);
@@ -1517,8 +1519,8 @@
     for (let i = 0; i < 3; i++) {
       const echo = avatar.cloneNode();
       echo.className = "nana-afterimage";
-      echo.style.setProperty("--echo-delay", `${480 + i * 170}ms`);
-      echo.style.setProperty("--echo-x", `${-48 + i * 24}px`);
+      echo.style.setProperty("--echo-delay", `${700 + i * 240}ms`);
+      echo.style.setProperty("--echo-x", `${-96 + i * 48}px`);
       fx.append(echo);
     }
     tileNode.classList.add("nana-target");
@@ -1526,23 +1528,23 @@
       const paw = document.createElement("i");
       paw.className = "pet-paw";
       paw.textContent = "🐾";
-      paw.style.setProperty("--x", `${-96 + i * 31}px`);
-      paw.style.setProperty("--y", `${(i % 2 ? -1 : 1) * (24 + (i % 3) * 9)}px`);
-      paw.style.setProperty("--delay", `${520 + i * 85}ms`);
+      paw.style.setProperty("--x", `${-192 + i * 62}px`);
+      paw.style.setProperty("--y", `${(i % 2 ? -1 : 1) * (48 + (i % 3) * 18)}px`);
+      paw.style.setProperty("--delay", `${850 + i * 140}ms`);
       fx.append(paw);
     }
     for (let i = 0; i < 3; i++) {
       const slash = document.createElement("i");
       slash.className = "claw-slash";
-      slash.style.setProperty("--slash-x", `${(i - 1) * 25}px`);
-      slash.style.setProperty("--delay", `${1500 + i * 200}ms`);
+      slash.style.setProperty("--slash-x", `${(i - 1) * 50}px`);
+      slash.style.setProperty("--delay", `${2200 + i * 300}ms`);
       fx.append(slash);
     }
     shell.append(fx);
     window.setTimeout(() => {
       fx.remove();
       tileNode.classList.remove("nana-target");
-    }, 4150);
+    }, 5900);
   }
 
   function showToast(message) {
