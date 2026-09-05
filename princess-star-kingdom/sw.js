@@ -1,4 +1,4 @@
-const CACHE = "princess-star-kingdom-v12";
+const CACHE = "princess-star-kingdom-v121";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const ASSETS = [
   "./assets/power-bomb.webp",
   "./assets/power-rainbow.webp",
   "./assets/milu-russian-blue-v1.webp",
+  "./assets/nana-wave-v1.webp",
   "./assets/royal-rocket-v1.webp",
   "./assets/rose-bomb-v1.webp",
   "./assets/royal-facilities-atlas-v1.webp",

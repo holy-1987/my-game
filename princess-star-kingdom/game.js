@@ -1498,11 +1498,18 @@
     avatar.className = "pet-cast-avatar";
     avatar.src = "assets/milu-russian-blue-v1.webp";
     avatar.alt = "";
+    const waveAvatar = document.createElement("img");
+    waveAvatar.className = "nana-wave-avatar";
+    waveAvatar.src = "assets/nana-wave-v1.webp";
+    waveAvatar.alt = "";
+    const castBody = document.createElement("span");
+    castBody.className = "nana-cast-body";
+    castBody.append(avatar, waveAvatar);
     const aura = document.createElement("i");
     aura.className = "claw-aura";
     const shadow = document.createElement("i");
     shadow.className = "nana-landing-shadow";
-    fx.append(shadow, aura, avatar);
+    fx.append(shadow, aura, castBody);
     for (let i = 0; i < 3; i++) {
       const echo = avatar.cloneNode();
       echo.className = "nana-afterimage";
