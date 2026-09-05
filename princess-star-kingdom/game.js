@@ -68,6 +68,8 @@
   let toastTimer = null;
   let lastBuiltIndex = null;
   let uid = 0;
+  let dragGesture = null;
+  let suppressBoardClick = false;
 
   function defaultState(princess = "星華") {
     return { princess, level: 1, potions: 0, stars: 0, built: 0, eventWins: 0, facilityLevels: new Array(DISTRICTS.length).fill(0), miluPats: 0 };
@@ -455,10 +457,87 @@
     els.board.replaceChildren(fragment);
   }
 
+  function beginBoardDrag(event) {
+    if (locked || !level || level.won || toolMode) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const node = event.target.closest(".tile");
+    if (!node) return;
+    const index = Number(node.dataset.index);
+    if (!Number.isInteger(index) || board[index]?.blocked) return;
+    dragGesture = {
+      pointerId: event.pointerId,
+      index,
+      startX: event.clientX,
+      startY: event.clientY,
+      node,
+      moved: false,
+      swapped: false
+    };
+    node.setPointerCapture?.(event.pointerId);
+    node.classList.add("drag-source");
+  }
+
+  function moveBoardDrag(event) {
+    const drag = dragGesture;
+    if (!drag || drag.pointerId !== event.pointerId || drag.swapped || locked) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    const distance = Math.hypot(dx, dy);
+    const threshold = Math.min(20, Math.max(12, drag.node.getBoundingClientRect().width * .32));
+    drag.node.style.setProperty("--drag-x", `${Math.max(-24, Math.min(24, dx))}px`);
+    drag.node.style.setProperty("--drag-y", `${Math.max(-24, Math.min(24, dy))}px`);
+    if (distance < threshold) return;
+    drag.moved = true;
+    event.preventDefault();
+    const target = dragTarget(drag.index, dx, dy);
+    if (target === null || board[target]?.blocked) {
+      drag.node.classList.add("drag-invalid");
+      return;
+    }
+    drag.swapped = true;
+    const from = drag.index;
+    suppressNextBoardClick();
+    clearDragVisual(drag);
+    dragGesture = null;
+    selected = null;
+    swapTiles(from, target);
+  }
+
+  function endBoardDrag(event) {
+    if (!dragGesture || dragGesture.pointerId !== event.pointerId) return;
+    if (dragGesture.moved) suppressNextBoardClick();
+    clearDragVisual(dragGesture);
+    dragGesture = null;
+  }
+
+  function clearDragVisual(drag) {
+    drag.node.classList.remove("drag-source", "drag-invalid");
+    drag.node.style.removeProperty("--drag-x");
+    drag.node.style.removeProperty("--drag-y");
+    if (drag.node.hasPointerCapture?.(drag.pointerId)) drag.node.releasePointerCapture(drag.pointerId);
+  }
+
+  function suppressNextBoardClick() {
+    suppressBoardClick = true;
+    window.setTimeout(() => { suppressBoardClick = false; }, 700);
+  }
+
   function adjacent(a, b) {
     const ar = Math.floor(a / SIZE), ac = a % SIZE;
     const br = Math.floor(b / SIZE), bc = b % SIZE;
     return Math.abs(ar - br) + Math.abs(ac - bc) === 1;
+  }
+
+  function dragTarget(index, dx, dy) {
+    const row = Math.floor(index / SIZE);
+    const col = index % SIZE;
+    let target = index;
+    if (Math.abs(dx) >= Math.abs(dy)) target += dx > 0 ? 1 : -1;
+    else target += dy > 0 ? SIZE : -SIZE;
+    const targetRow = Math.floor(target / SIZE);
+    const targetCol = target % SIZE;
+    if (target < 0 || target >= board.length) return null;
+    return Math.abs(targetRow - row) + Math.abs(targetCol - col) === 1 ? target : null;
   }
 
   async function handleTile(index) {
@@ -1002,7 +1081,7 @@
     const button = name === "wand" ? els.wandBtn : els.roseBtn;
     button.classList.toggle("active", toolMode === name);
     button.setAttribute("aria-pressed", String(toolMode === name));
-    els.toolHint.textContent = toolMode === "rose" ? "點選位置，玫瑰花瓣會落在九宮格" : toolMode === "wand" ? "點選寶石，魔杖會飛到目標消除" : "飛碟、皇家火箭與玫瑰炸彈可互換連續引爆";
+    els.toolHint.textContent = toolMode === "rose" ? "點選位置，玫瑰花瓣會落在九宮格" : toolMode === "wand" ? "點選寶石，魔杖會飛到目標消除" : "點選相鄰方塊，或直接拖曳交換";
     renderBoard();
   }
 
@@ -1012,7 +1091,7 @@
       button.classList.remove("active");
       button.setAttribute("aria-pressed", "false");
     });
-    els.toolHint.textContent = "飛碟、皇家火箭與玫瑰炸彈可互換連續引爆";
+    els.toolHint.textContent = "點選相鄰方塊，或直接拖曳交換";
   }
 
   function areaAround(index, radius) {
@@ -1421,7 +1500,16 @@
     avatar.alt = "";
     const aura = document.createElement("i");
     aura.className = "claw-aura";
-    fx.append(aura, avatar);
+    const shadow = document.createElement("i");
+    shadow.className = "nana-landing-shadow";
+    fx.append(shadow, aura, avatar);
+    for (let i = 0; i < 3; i++) {
+      const echo = avatar.cloneNode();
+      echo.className = "nana-afterimage";
+      echo.style.setProperty("--echo-delay", `${260 + i * 105}ms`);
+      echo.style.setProperty("--echo-x", `${-34 + i * 17}px`);
+      fx.append(echo);
+    }
     tileNode.classList.add("nana-target");
     for (let i = 0; i < 7; i++) {
       const paw = document.createElement("i");
@@ -1458,9 +1546,17 @@
   }
 
   els.board.addEventListener("click", (event) => {
+    if (suppressBoardClick) {
+      suppressBoardClick = false;
+      return;
+    }
     const tileNode = event.target.closest(".tile");
     if (tileNode) handleTile(Number(tileNode.dataset.index));
   });
+  els.board.addEventListener("pointerdown", beginBoardDrag);
+  els.board.addEventListener("pointermove", moveBoardDrag);
+  els.board.addEventListener("pointerup", endBoardDrag);
+  els.board.addEventListener("pointercancel", endBoardDrag);
   $("playBtn").addEventListener("click", startLevel);
   els.eventBtn.addEventListener("click", startEvent);
   $("backBtn").addEventListener("click", showHome);
